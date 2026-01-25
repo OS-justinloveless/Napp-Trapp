@@ -4,7 +4,7 @@ Control Cursor IDE on your laptop from your mobile phone. This app provides a lo
 
 ## Features
 
-- **QR Code Connection**: Scan a QR code to connect instantly - no manual typing!
+- **One-Scan Connection**: Just scan the QR code with your phone camera - opens the app and connects automatically!
 - **Project Management**: Browse, open, and create new Cursor projects
 - **File Browser**: Navigate your file system and view/edit files
 - **Code Viewer**: Syntax-highlighted code viewing with edit capabilities
@@ -55,39 +55,34 @@ cd ../server
 npm start
 ```
 
-You'll see output with a QR code:
+You'll see a QR code in your terminal:
 ```
-╔═══════════════════════════════════════════════════════════════╗
-║           Cursor Mobile Access Server                          ║
-╠═══════════════════════════════════════════════════════════════╣
-║ Server running on port 3847                                    ║
-║                                                                ║
-║ Local URL: http://192.168.1.100:3847                          ║
-╠═══════════════════════════════════════════════════════════════╣
-║                                                                ║
-║  Scan this QR code with your phone to connect:                 ║
-║                                                                ║
-║      ▄▄▄▄▄▄▄  ▄    ▄ ▄▄▄▄▄▄▄                                  ║
-║      █ ▄▄▄ █ ▀█▄█▀▄  █ ▄▄▄ █                                  ║
-║      █ ███ █ ▀▀ ▄▀▄▄ █ ███ █                                  ║
-║      ▀▀▀▀▀▀▀ █ █▀▄▀█ ▀▀▀▀▀▀▀                                  ║
-║       ...                                                      ║
-║                                                                ║
-╠═══════════════════════════════════════════════════════════════╣
-║ Manual Connection:                                             ║
-║ Token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx                    ║
-╚═══════════════════════════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════════════╗
+║              Cursor Mobile Access Server                           ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║   Scan this QR code with your phone camera to connect:            ║
+║                                                                    ║
+║       ▄▄▄▄▄▄▄  ▄    ▄ ▄▄▄▄▄▄▄                                     ║
+║       █ ▄▄▄ █ ▀█▄█▀▄  █ ▄▄▄ █                                     ║
+║       █ ███ █ ▀▀ ▄▀▄▄ █ ███ █                                     ║
+║       ▀▀▀▀▀▀▀ █ █▀▄▀█ ▀▀▀▀▀▀▀                                     ║
+║        ...                                                         ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║   Just point your phone camera at the QR code above!              ║
+║   It will open the app and connect automatically.                 ║
+╚═══════════════════════════════════════════════════════════════════╝
 ```
 
 ### 4. Connect from Your Phone
 
-**Option A: Scan QR Code (Easiest)**
-1. Open your phone's browser and navigate to `http://<your-laptop-ip>:3847`
-2. Tap "Scan QR Code to Connect"
-3. Point your camera at the QR code in the terminal
-4. You're connected!
+**Scan QR Code (Recommended)**
+1. Point your phone's camera at the QR code in the terminal
+2. Tap the notification/link that appears
+3. The app opens and connects automatically - done!
 
-**Option B: Manual Entry**
+**Manual Entry (Fallback)**
 1. Make sure your phone is on the same WiFi network as your laptop
 2. Open your phone's browser
 3. Navigate to `http://<your-laptop-ip>:3847`

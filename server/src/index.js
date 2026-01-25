@@ -42,12 +42,9 @@ function getLocalIP() {
 
 const LOCAL_IP = getLocalIP();
 
-// Generate connection URL for QR code
-function getConnectionData() {
-  return JSON.stringify({
-    url: `http://${LOCAL_IP}:${PORT}`,
-    token: AUTH_TOKEN
-  });
+// Generate connection URL for QR code - includes token in URL for one-scan connection
+function getConnectionUrl() {
+  return `http://${LOCAL_IP}:${PORT}/?token=${AUTH_TOKEN}`;
 }
 
 // Middleware
@@ -73,8 +70,8 @@ setupWebSocket(wss, authManager);
 // QR Code endpoint (no auth required - used for initial connection)
 app.get('/qr', async (req, res) => {
   try {
-    const connectionData = getConnectionData();
-    const qrDataUrl = await QRCode.toDataURL(connectionData, {
+    const connectionUrl = getConnectionUrl();
+    const qrDataUrl = await QRCode.toDataURL(connectionUrl, {
       width: 300,
       margin: 2,
       color: {
@@ -84,6 +81,7 @@ app.get('/qr', async (req, res) => {
     });
     res.json({ 
       qr: qrDataUrl,
+      connectionUrl,
       url: `http://${LOCAL_IP}:${PORT}`,
       ip: LOCAL_IP,
       port: PORT
@@ -96,8 +94,8 @@ app.get('/qr', async (req, res) => {
 // QR Code image endpoint
 app.get('/qr.png', async (req, res) => {
   try {
-    const connectionData = getConnectionData();
-    const buffer = await QRCode.toBuffer(connectionData, {
+    const connectionUrl = getConnectionUrl();
+    const buffer = await QRCode.toBuffer(connectionUrl, {
       width: 300,
       margin: 2
     });
@@ -114,23 +112,19 @@ app.get('*', (req, res) => {
 
 // Display startup message with QR code
 async function displayStartupMessage() {
-  const connectionData = getConnectionData();
+  const connectionUrl = getConnectionUrl();
   
   console.log('\n');
-  console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║           Cursor Mobile Access Server                          ║');
-  console.log('╠═══════════════════════════════════════════════════════════════╣');
-  console.log(`║ Server running on port ${PORT}                                   ║`);
-  console.log('║                                                                 ║');
-  console.log(`║ Local URL: http://${LOCAL_IP}:${PORT}`.padEnd(66) + '║');
-  console.log('╠═══════════════════════════════════════════════════════════════╣');
-  console.log('║                                                                 ║');
-  console.log('║  Scan this QR code with your phone to connect:                  ║');
-  console.log('║                                                                 ║');
+  console.log('╔═══════════════════════════════════════════════════════════════════╗');
+  console.log('║              Cursor Mobile Access Server                           ║');
+  console.log('╠═══════════════════════════════════════════════════════════════════╣');
+  console.log('║                                                                    ║');
+  console.log('║   Scan this QR code with your phone camera to connect:            ║');
+  console.log('║                                                                    ║');
   
   // Generate QR code for terminal
   try {
-    const qrString = await QRCode.toString(connectionData, {
+    const qrString = await QRCode.toString(connectionUrl, {
       type: 'terminal',
       small: true
     });
@@ -139,20 +133,22 @@ async function displayStartupMessage() {
     const lines = qrString.split('\n');
     for (const line of lines) {
       if (line.trim()) {
-        console.log('║  ' + line.padEnd(63) + '║');
+        console.log('║    ' + line.padEnd(64) + '║');
       }
     }
   } catch (e) {
-    console.log('║  (QR code generation failed - use manual connection)          ║');
+    console.log('║   (QR code generation failed - use manual connection below)      ║');
   }
   
-  console.log('║                                                                 ║');
-  console.log('╠═══════════════════════════════════════════════════════════════╣');
-  console.log('║ Manual Connection:                                              ║');
-  console.log(`║ Token: ${AUTH_TOKEN}         ║`);
-  console.log('╚═══════════════════════════════════════════════════════════════╝');
-  console.log('\n');
-  console.log('Tip: Open the app on your phone and tap "Scan QR Code" to connect instantly!');
+  console.log('║                                                                    ║');
+  console.log('╠═══════════════════════════════════════════════════════════════════╣');
+  console.log('║   Just point your phone camera at the QR code above!              ║');
+  console.log('║   It will open the app and connect automatically.                 ║');
+  console.log('╠═══════════════════════════════════════════════════════════════════╣');
+  console.log('║   Manual Connection (if QR doesn\'t work):                          ║');
+  console.log(`║   URL:   http://${LOCAL_IP}:${PORT}`.padEnd(68) + '║');
+  console.log(`║   Token: ${AUTH_TOKEN}            ║`);
+  console.log('╚═══════════════════════════════════════════════════════════════════╝');
   console.log('\n');
 }
 

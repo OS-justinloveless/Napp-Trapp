@@ -4,8 +4,27 @@ const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'cursor-mobile-auth';
 
+// Check for token in URL query params (from QR code scan)
+function getTokenFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('token');
+}
+
+// Clean the URL after extracting token (remove ?token=xxx)
+function cleanUrlToken() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('token');
+  window.history.replaceState({}, '', url.pathname + url.search);
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => {
+    // First check URL for token (QR code flow)
+    const urlToken = getTokenFromUrl();
+    if (urlToken) {
+      return urlToken;
+    }
+    // Then check localStorage
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored).token : null;
   });
@@ -22,14 +41,58 @@ export function AuthProvider({ children }) {
   });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
 
   useEffect(() => {
-    if (token && serverUrl) {
+    // Check if we have a token from URL (QR code scan)
+    const urlToken = getTokenFromUrl();
+    
+    if (urlToken && !autoConnectAttempted) {
+      // Auto-connect with URL token
+      setAutoConnectAttempted(true);
+      autoConnectFromUrl(urlToken);
+    } else if (token && serverUrl) {
       validateToken();
     } else {
       setIsLoading(false);
     }
   }, []);
+
+  async function autoConnectFromUrl(urlToken) {
+    try {
+      // Use current host as server URL
+      const currentUrl = `${window.location.protocol}//${window.location.host}`;
+      
+      const response = await fetch(`${currentUrl}/api/system/info`, {
+        headers: {
+          'Authorization': `Bearer ${urlToken}`
+        }
+      });
+      
+      if (response.ok) {
+        // Success! Save credentials and authenticate
+        setServerUrl(currentUrl);
+        setToken(urlToken);
+        setIsAuthenticated(true);
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          token: urlToken,
+          serverUrl: currentUrl
+        }));
+        
+        // Clean the token from URL
+        cleanUrlToken();
+      } else {
+        // Token invalid, clear it
+        cleanUrlToken();
+      }
+    } catch (error) {
+      console.error('Auto-connect failed:', error);
+      cleanUrlToken();
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   async function validateToken() {
     try {
