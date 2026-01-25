@@ -1,10 +1,11 @@
 # Cursor Mobile Access
 
-Control Cursor IDE on your laptop from your mobile phone. This app provides a local server that runs on your laptop and a mobile-friendly web interface accessible from your phone.
+Control Cursor IDE on your laptop from your mobile phone. This app provides a local server that runs on your laptop and a mobile-friendly interface accessible from your phone - available as both a web app and a native iOS app.
 
 ## Features
 
 - **One-Scan Connection**: Just scan the QR code with your phone camera - opens the app and connects automatically!
+- **Native iOS App**: Get the best experience with our SwiftUI-based iOS app
 - **Project Management**: Browse, open, and create new Cursor projects
 - **File Browser**: Navigate your file system and view/edit files
 - **Code Viewer**: Syntax-highlighted code viewing with edit capabilities
@@ -14,18 +15,28 @@ Control Cursor IDE on your laptop from your mobile phone. This app provides a lo
 - **System Info**: Monitor your laptop's status and Cursor IDE state
 - **Security**: Token-based authentication to protect your data
 
+## Client Options
+
+| Platform | Type | Location |
+|----------|------|----------|
+| All Mobile | Web App | `client/` |
+| iOS | Native SwiftUI | `ios-client/` |
+
+The web client automatically detects iOS devices and offers to open the native app for the best experience.
+
 ## Architecture
 
 ```
 ┌─────────────────┐         ┌─────────────────┐
 │   Your Phone    │◄───────►│   Your Laptop   │
-│  (Web Browser)  │  WiFi   │    (Server)     │
+│  (iOS App or    │  WiFi   │    (Server)     │
+│   Web Browser)  │         │                 │
 └─────────────────┘         └─────────────────┘
-                                    │
-                                    ▼
-                            ┌─────────────────┐
-                            │   Cursor IDE    │
-                            └─────────────────┘
+                                   │
+                                   ▼
+                           ┌─────────────────┐
+                           │   Cursor IDE    │
+                           └─────────────────┘
 ```
 
 ## Quick Start
@@ -143,7 +154,7 @@ The client dev server runs on port 5173 and proxies API requests to the server o
 
 ```
 cursor-mobile-access/
-├── server/
+├── server/                        # Node.js backend server
 │   ├── src/
 │   │   ├── index.js              # Main server entry point
 │   │   ├── auth/
@@ -160,7 +171,7 @@ cursor-mobile-access/
 │   │       └── index.js          # Real-time updates
 │   └── package.json
 │
-├── client/
+├── client/                        # React web client
 │   ├── src/
 │   │   ├── main.jsx              # App entry point
 │   │   ├── App.jsx               # Main app component
@@ -168,7 +179,8 @@ cursor-mobile-access/
 │   │   │   ├── AuthContext.jsx   # Authentication state
 │   │   │   └── WebSocketContext.jsx # Real-time connection
 │   │   ├── components/
-│   │   │   └── Layout.jsx        # App layout
+│   │   │   ├── Layout.jsx        # App layout
+│   │   │   └── iOSAppBanner.jsx  # iOS native app detection
 │   │   ├── pages/
 │   │   │   ├── LoginPage.jsx     # Authentication
 │   │   │   ├── ProjectsPage.jsx  # Project list
@@ -182,6 +194,15 @@ cursor-mobile-access/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
+│
+├── ios-client/                    # Native iOS app (SwiftUI)
+│   └── CursorMobile/
+│       ├── CursorMobile.xcodeproj
+│       └── CursorMobile/
+│           ├── CursorMobileApp.swift
+│           ├── Models/           # Data models
+│           ├── Services/         # API & WebSocket
+│           └── Views/            # SwiftUI views
 │
 └── README.md
 ```
@@ -285,6 +306,26 @@ The chat feature uses `cursor-agent` to continue conversations with Cursor's AI,
 ### File changes not detected
 - Make sure WebSocket is connected (check Settings page)
 - Large files or many rapid changes might be throttled
+
+## iOS App
+
+For iPhone and iPad users, we provide a native SwiftUI app that offers the best mobile experience.
+
+### Building the iOS App
+
+1. Open `ios-client/CursorMobile/CursorMobile.xcodeproj` in Xcode
+2. Select your development team
+3. Build and run on your device
+
+See `ios-client/README.md` for detailed iOS app documentation.
+
+### iOS App Features
+
+- Native SwiftUI interface optimized for iOS
+- Built-in QR code scanner
+- Deep linking support (`cursor-mobile://connect?...`)
+- Real-time WebSocket updates
+- Secure credential storage in Keychain
 
 ## Contributing
 
