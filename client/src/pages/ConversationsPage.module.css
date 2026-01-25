@@ -1,0 +1,225 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.refreshButton {
+  flex: 1;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.loading, .error, .empty, .emptyMessages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error button {
+  margin-top: 16px;
+  padding: 12px 24px;
+  background: var(--accent);
+  color: white;
+  border-radius: var(--radius-md);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.empty h3, .emptyMessages h3 {
+  font-size: 18px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.conversationList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversationCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.conversationCard:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.conversationIcon {
+  font-size: 28px;
+}
+
+.conversationInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversationName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: 2px;
+}
+
+.conversationPath {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+.conversationDate {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.arrow {
+  font-size: 20px;
+  color: var(--text-muted);
+}
+
+.notice {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(0, 122, 204, 0.1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+
+.notice h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.notice p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Messages view */
+.messagesHeader {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.backButton {
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.headerInfo {
+  flex: 1;
+}
+
+.headerInfo h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.headerInfo p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.messagesContainer {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.messagesList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.message {
+  padding: 14px;
+  border-radius: var(--radius-md);
+}
+
+.userMessage {
+  background: var(--accent-light);
+  border: 1px solid var(--accent);
+}
+
+.assistantMessage {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.messageRole {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.userMessage .messageRole {
+  color: var(--accent);
+}
+
+.assistantMessage .messageRole {
+  color: var(--text-secondary);
+}
+
+.messageContent {
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
