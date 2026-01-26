@@ -8,9 +8,11 @@ export default function ProjectDetailPage() {
   const { projectId } = useParams();
   const [project, setProject] = useState(null);
   const [tree, setTree] = useState([]);
+  const [conversations, setConversations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedDirs, setExpandedDirs] = useState(new Set());
+  const [activeTab, setActiveTab] = useState('files'); // 'files' or 'chats'
   
   const { apiRequest } = useAuth();
   const { watchPath, fileChanges } = useWebSocket();
@@ -31,6 +33,7 @@ export default function ProjectDetailPage() {
       setIsLoading(true);
       setError(null);
       
+      // Load project and tree first (critical)
       const [projectRes, treeRes] = await Promise.all([
         apiRequest(`/api/projects/${projectId}`),
         apiRequest(`/api/projects/${projectId}/tree?depth=4`)
@@ -41,6 +44,16 @@ export default function ProjectDetailPage() {
       
       setProject(projectData.project);
       setTree(treeData.tree || []);
+      
+      // Load conversations separately so it doesn't break the page if it fails
+      try {
+        const conversationsRes = await apiRequest(`/api/projects/${projectId}/conversations`);
+        const conversationsData = await conversationsRes.json();
+        setConversations(conversationsData.conversations || []);
+      } catch (convErr) {
+        console.error('Failed to load conversations:', convErr);
+        setConversations([]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -127,18 +140,98 @@ export default function ProjectDetailPage() {
         </div>
       )}
       
-      <div className={styles.fileTree}>
-        <h3>Files</h3>
-        <FileTreeNode 
-          items={tree} 
-          expandedDirs={expandedDirs}
-          onToggleDir={toggleDir}
-          onOpenFile={openFile}
-          depth={0}
-        />
+      {/* Tab Navigation */}
+      <div className={styles.tabs}>
+        <button 
+          className={`${styles.tab} ${activeTab === 'files' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('files')}
+        >
+          📁 Files
+        </button>
+        <button 
+          className={`${styles.tab} ${activeTab === 'chats' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('chats')}
+        >
+          💬 Chats ({conversations.length})
+        </button>
       </div>
+      
+      {/* Files Tab */}
+      {activeTab === 'files' && (
+        <div className={styles.fileTree}>
+          <FileTreeNode 
+            items={tree} 
+            expandedDirs={expandedDirs}
+            onToggleDir={toggleDir}
+            onOpenFile={openFile}
+            depth={0}
+          />
+        </div>
+      )}
+      
+      {/* Chats Tab */}
+      {activeTab === 'chats' && (
+        <div className={styles.chatList}>
+          {conversations.length === 0 ? (
+            <div className={styles.emptyChats}>
+              <span className={styles.emptyIcon}>💬</span>
+              <p>No conversations for this project yet</p>
+            </div>
+          ) : (
+            conversations.map((conversation) => (
+              <div 
+                key={conversation.id}
+                className={styles.chatCard}
+                onClick={() => navigate(`/chat/${conversation.id}?type=${conversation.type}&workspaceId=${conversation.workspaceId || 'global'}`)}
+              >
+                <span className={styles.chatIcon}>
+                  {conversation.type === 'composer' ? '🎹' : '💬'}
+                </span>
+                <div className={styles.chatInfo}>
+                  <h4 className={styles.chatTitle}>
+                    {truncateTitle(conversation.title)}
+                  </h4>
+                  <div className={styles.chatMeta}>
+                    <span className={`${styles.typeTag} ${styles[conversation.type + 'Tag']}`}>
+                      {conversation.type === 'composer' ? 'Composer' : 'Chat'}
+                    </span>
+                    <span className={styles.messageCount}>
+                      {conversation.messageCount || 0} messages
+                    </span>
+                    <span className={styles.chatDate}>
+                      {formatDate(conversation.timestamp)}
+                    </span>
+                  </div>
+                </div>
+                <span className={styles.arrow}>›</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function truncateTitle(title, maxLength = 80) {
+  if (!title) return 'Untitled';
+  if (title.length <= maxLength) return title;
+  return title.slice(0, maxLength) + '...';
+}
+
+function formatDate(timestamp) {
+  if (!timestamp) return '';
+  
+  const date = new Date(typeof timestamp === 'number' ? timestamp : Date.parse(timestamp));
+  const now = new Date();
+  const diff = now - date;
+  
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  
+  return date.toLocaleDateString();
 }
 
 function FileTreeNode({ items, expandedDirs, onToggleDir, onOpenFile, depth }) {

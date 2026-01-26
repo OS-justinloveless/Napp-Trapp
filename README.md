@@ -10,6 +10,7 @@ Control Cursor IDE on your laptop from your mobile phone. This app provides a lo
 - **Code Viewer**: Syntax-highlighted code viewing with edit capabilities
 - **Real-time Updates**: WebSocket connection for live file change notifications
 - **Conversation History**: View your Cursor AI chat workspace sessions
+- **💬 Send Messages from Mobile**: Continue Cursor AI conversations from your phone with real-time streaming responses
 - **System Info**: Monitor your laptop's status and Cursor IDE state
 - **Security**: Token-based authentication to protect your data
 
@@ -214,6 +215,8 @@ Authorization: Bearer <your-token>
 - `GET /api/conversations` - List workspace sessions
 - `GET /api/conversations/:id` - Get conversation details
 - `GET /api/conversations/:id/messages` - Get messages
+- `POST /api/conversations` - Create new conversation
+- `POST /api/conversations/:id/messages` - Send message (returns SSE stream)
 
 #### System
 - `GET /api/system/info` - Get system information
@@ -252,6 +255,20 @@ Receive change notifications:
 - Dangerous terminal commands are blocked
 - Tokens are stored securely in browser localStorage
 - Consider using HTTPS in production environments
+
+## Prerequisites
+
+Before using the mobile chat feature, ensure `cursor-agent` CLI is installed and authenticated:
+
+```bash
+# Install cursor-agent (if not already installed)
+curl https://cursor.com/install -fsS | bash
+
+# Authenticate with your Cursor account
+cursor-agent login
+```
+
+The chat feature uses `cursor-agent` to continue conversations with Cursor's AI, so authentication is required.
 
 ## Troubleshooting
 

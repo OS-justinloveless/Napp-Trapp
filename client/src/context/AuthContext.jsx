@@ -7,7 +7,10 @@ const STORAGE_KEY = 'cursor-mobile-auth';
 // Check for token in URL query params (from QR code scan)
 function getTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('token');
+  const token = params.get('token');
+  console.log('[Auth Debug] URL search:', window.location.search);
+  console.log('[Auth Debug] Token from URL:', token ? `${token.substring(0, 8)}...` : 'none');
+  return token;
 }
 
 // Clean the URL after extracting token (remove ?token=xxx)
@@ -42,18 +45,34 @@ export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [debugLog, setDebugLog] = useState([]);
+
+  // Debug logging helper that stores logs for display
+  function addDebugLog(message) {
+    console.log('[Auth Debug]', message);
+    setDebugLog(prev => [...prev, `${new Date().toISOString().substring(11, 19)} ${message}`]);
+  }
 
   useEffect(() => {
     // Check if we have a token from URL (QR code scan)
     const urlToken = getTokenFromUrl();
     
+    addDebugLog(`URL: ${window.location.href}`);
+    addDebugLog(`urlToken: ${urlToken ? 'present' : 'absent'}`);
+    addDebugLog(`autoConnectAttempted: ${autoConnectAttempted}`);
+    addDebugLog(`token state: ${token ? 'present' : 'absent'}`);
+    addDebugLog(`serverUrl: ${serverUrl}`);
+    
     if (urlToken && !autoConnectAttempted) {
       // Auto-connect with URL token
+      addDebugLog('Starting auto-connect from URL token');
       setAutoConnectAttempted(true);
       autoConnectFromUrl(urlToken);
     } else if (token && serverUrl) {
+      addDebugLog('Validating existing token');
       validateToken();
     } else {
+      addDebugLog('No token to validate, showing login');
       setIsLoading(false);
     }
   }, []);
@@ -63,14 +82,20 @@ export function AuthProvider({ children }) {
       // Use current host as server URL
       const currentUrl = `${window.location.protocol}//${window.location.host}`;
       
+      addDebugLog(`Auto-connect to: ${currentUrl}`);
+      addDebugLog(`Fetching: ${currentUrl}/api/system/info`);
+      
       const response = await fetch(`${currentUrl}/api/system/info`, {
         headers: {
           'Authorization': `Bearer ${urlToken}`
         }
       });
       
+      addDebugLog(`Response status: ${response.status}`);
+      
       if (response.ok) {
         // Success! Save credentials and authenticate
+        addDebugLog('SUCCESS! Authenticating...');
         setServerUrl(currentUrl);
         setToken(urlToken);
         setIsAuthenticated(true);
@@ -84,12 +109,16 @@ export function AuthProvider({ children }) {
         cleanUrlToken();
       } else {
         // Token invalid, clear it
+        const errorText = await response.text();
+        addDebugLog(`FAILED: ${response.status}`);
+        addDebugLog(`Error: ${errorText}`);
         cleanUrlToken();
       }
     } catch (error) {
-      console.error('Auto-connect failed:', error);
+      addDebugLog(`EXCEPTION: ${error.message}`);
       cleanUrlToken();
     } finally {
+      addDebugLog('Auto-connect finished');
       setIsLoading(false);
     }
   }
@@ -178,7 +207,8 @@ export function AuthProvider({ children }) {
     isLoading,
     login,
     logout,
-    apiRequest
+    apiRequest,
+    debugLog
   };
 
   return (

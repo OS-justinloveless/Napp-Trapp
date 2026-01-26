@@ -3,9 +3,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { CursorChatReader } from '../utils/CursorChatReader.js';
 
 const router = Router();
 const cursorWorkspace = new CursorWorkspace();
+const chatReader = new CursorChatReader();
 
 // Get list of recent Cursor projects
 router.get('/', async (req, res) => {
@@ -96,6 +98,30 @@ router.post('/:projectId/open', async (req, res) => {
   } catch (error) {
     console.error('Error opening project:', error);
     res.status(500).json({ error: 'Failed to open project in Cursor' });
+  }
+});
+
+// Get conversations/chats for a specific project
+router.get('/:projectId/conversations', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const project = await cursorWorkspace.getProjectDetails(projectId);
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const conversations = await chatReader.getChatsByProjectPath(project.path);
+    
+    res.json({ 
+      conversations,
+      total: conversations.length,
+      projectName: project.name,
+      projectPath: project.path
+    });
+  } catch (error) {
+    console.error('Error fetching project conversations:', error);
+    res.status(500).json({ error: 'Failed to fetch project conversations' });
   }
 });
 

@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login, isLoading: isAutoConnecting } = useAuth();
+  const { login, isLoading: isAutoConnecting, debugLog } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -49,6 +49,27 @@ export default function LoginPage() {
             <h2>Connecting...</h2>
             <p>Setting up your connection</p>
           </div>
+          
+          {debugLog && debugLog.length > 0 && (
+            <div style={{
+              marginTop: '20px',
+              padding: '12px',
+              background: '#1a1a2e',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+              maxHeight: '200px',
+              overflow: 'auto',
+              textAlign: 'left'
+            }}>
+              <div style={{ color: '#888', marginBottom: '8px' }}>Debug Log:</div>
+              {debugLog.map((log, i) => (
+                <div key={i} style={{ color: '#0f0', marginBottom: '4px', wordBreak: 'break-all' }}>
+                  {log}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -124,6 +145,27 @@ export default function LoginPage() {
             <li>Tap the notification to open and connect automatically</li>
           </ol>
         </div>
+        
+        {debugLog && debugLog.length > 0 && (
+          <div style={{
+            marginTop: '20px',
+            padding: '12px',
+            background: '#1a1a2e',
+            borderRadius: '8px',
+            fontSize: '11px',
+            fontFamily: 'monospace',
+            maxHeight: '200px',
+            overflow: 'auto',
+            textAlign: 'left'
+          }}>
+            <div style={{ color: '#888', marginBottom: '8px' }}>Debug Log:</div>
+            {debugLog.map((log, i) => (
+              <div key={i} style={{ color: '#0f0', marginBottom: '4px', wordBreak: 'break-all' }}>
+                {log}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

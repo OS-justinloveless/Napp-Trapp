@@ -1,10 +1,98 @@
 import chokidar from 'chokidar';
 import path from 'path';
+import os from 'os';
+import fs from 'fs';
 
 const clients = new Map();
 const watchers = new Map();
+const dbWatchers = new Map();
+
+/**
+ * Get Cursor database paths
+ */
+function getCursorDbPaths() {
+  const homeDir = os.homedir();
+  const paths = [];
+  
+  switch (process.platform) {
+    case 'darwin':
+      paths.push(
+        path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+        path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'workspaceStorage')
+      );
+      break;
+    case 'win32':
+      paths.push(
+        path.join(homeDir, 'AppData', 'Roaming', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+        path.join(homeDir, 'AppData', 'Roaming', 'Cursor', 'User', 'workspaceStorage')
+      );
+      break;
+    case 'linux':
+      if (process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY) {
+        paths.push(
+          path.join(homeDir, '.cursor-server', 'data', 'User', 'globalStorage', 'state.vscdb'),
+          path.join(homeDir, '.cursor-server', 'data', 'User', 'workspaceStorage')
+        );
+      } else {
+        paths.push(
+          path.join(homeDir, '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
+          path.join(homeDir, '.config', 'Cursor', 'User', 'workspaceStorage')
+        );
+      }
+      break;
+  }
+  
+  return paths;
+}
+
+/**
+ * Setup database watchers for Cursor chat updates
+ */
+function setupDatabaseWatchers() {
+  const dbPaths = getCursorDbPaths();
+  
+  for (const dbPath of dbPaths) {
+    if (!fs.existsSync(dbPath)) {
+      console.log(`Database path does not exist, skipping: ${dbPath}`);
+      continue;
+    }
+    
+    console.log(`Setting up database watcher for: ${dbPath}`);
+    
+    const watcher = chokidar.watch(dbPath, {
+      persistent: true,
+      ignoreInitial: true,
+      depth: dbPath.endsWith('workspaceStorage') ? 2 : 0, // Watch workspace subdirectories
+      awaitWriteFinish: {
+        stabilityThreshold: 100,
+        pollInterval: 50
+      }
+    });
+    
+    watcher.on('change', (filePath) => {
+      console.log(`Database changed: ${filePath}`);
+      
+      // Broadcast to all connected clients
+      broadcast({
+        type: 'chatUpdate',
+        message: 'Chat database updated',
+        path: filePath,
+        timestamp: Date.now()
+      });
+    });
+    
+    watcher.on('error', (error) => {
+      console.error(`Database watcher error for ${dbPath}:`, error);
+    });
+    
+    dbWatchers.set(dbPath, watcher);
+  }
+}
 
 export function setupWebSocket(wss, authManager) {
+  // Setup database watchers
+  setupDatabaseWatchers();
+  
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
     let authenticated = false;
@@ -204,4 +292,19 @@ export function broadcast(message) {
       client.ws.send(data);
     }
   }
+}
+
+// Cleanup on shutdown
+export function cleanup() {
+  // Close all database watchers
+  for (const [, watcher] of dbWatchers) {
+    watcher.close();
+  }
+  dbWatchers.clear();
+  
+  // Close all file watchers
+  for (const [, watcherInfo] of watchers) {
+    watcherInfo.watcher.close();
+  }
+  watchers.clear();
 }

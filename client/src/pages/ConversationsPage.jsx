@@ -1,20 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import styles from './ConversationsPage.module.css';
 
 export default function ConversationsPage() {
   const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [filteredConversations, setFilteredConversations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all'); // 'all', 'chat', 'composer'
+  const [searchQuery, setSearchQuery] = useState('');
   
   const { apiRequest } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadConversations();
   }, []);
+
+  useEffect(() => {
+    filterConversations();
+  }, [conversations, filter, searchQuery]);
 
   async function loadConversations() {
     try {
@@ -31,28 +37,35 @@ export default function ConversationsPage() {
     }
   }
 
-  async function loadMessages(conversationId) {
-    try {
-      setIsLoadingMessages(true);
-      
-      const response = await apiRequest(`/api/conversations/${conversationId}/messages`);
-      const data = await response.json();
-      setMessages(data.messages || []);
-    } catch (err) {
-      console.error('Failed to load messages:', err);
-      setMessages([]);
-    } finally {
-      setIsLoadingMessages(false);
+  function filterConversations() {
+    let filtered = [...conversations];
+    
+    // Apply type filter
+    if (filter !== 'all') {
+      filtered = filtered.filter(c => c.type === filter);
     }
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(c => 
+        c.title?.toLowerCase().includes(query) ||
+        c.projectName?.toLowerCase().includes(query) ||
+        c.matchText?.toLowerCase().includes(query)
+      );
+    }
+    
+    setFilteredConversations(filtered);
   }
 
   function selectConversation(conversation) {
-    setSelectedConversation(conversation);
-    loadMessages(conversation.id);
+    navigate(`/chat/${conversation.id}?type=${conversation.type}&workspaceId=${conversation.workspaceId || 'global'}`);
   }
 
-  function formatDate(dateString) {
-    const date = new Date(dateString);
+  function formatDate(timestamp) {
+    if (!timestamp) return '';
+    
+    const date = new Date(typeof timestamp === 'number' ? timestamp : Date.parse(timestamp));
     const now = new Date();
     const diff = now - date;
     
@@ -64,76 +77,59 @@ export default function ConversationsPage() {
     return date.toLocaleDateString();
   }
 
-  function getProjectName(conversation) {
-    if (conversation.projectName) {
-      // Extract readable name from path
-      const parts = conversation.projectName.replace('file://', '').split('/');
-      return parts[parts.length - 1] || conversation.projectName;
-    }
-    return conversation.id.substring(0, 8);
+  function getTypeIcon(type) {
+    return type === 'composer' ? '🎹' : '💬';
   }
 
-  if (selectedConversation) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.messagesHeader}>
-          <button 
-            className={styles.backButton}
-            onClick={() => setSelectedConversation(null)}
-          >
-            ← Back
-          </button>
-          <div className={styles.headerInfo}>
-            <h2>{getProjectName(selectedConversation)}</h2>
-            <p>{formatDate(selectedConversation.lastModified)}</p>
-          </div>
-        </div>
-        
-        <div className={styles.messagesContainer}>
-          {isLoadingMessages ? (
-            <div className={styles.loading}>
-              <div className={styles.spinner} />
-              <p>Loading messages...</p>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className={styles.emptyMessages}>
-              <span className={styles.emptyIcon}>💬</span>
-              <h3>No messages available</h3>
-              <p>
-                Cursor conversations are stored in an internal database format.
-                Future versions will provide better integration.
-              </p>
-            </div>
-          ) : (
-            <div className={styles.messagesList}>
-              {messages.map((message, index) => (
-                <div 
-                  key={index} 
-                  className={`${styles.message} ${message.role === 'user' ? styles.userMessage : styles.assistantMessage}`}
-                >
-                  <div className={styles.messageRole}>
-                    {message.role === 'user' ? '👤 You' : '🤖 Assistant'}
-                  </div>
-                  <div className={styles.messageContent}>
-                    {message.content}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  function getTypeLabel(type) {
+    return type === 'composer' ? 'Composer' : 'Chat';
+  }
+
+  function truncateTitle(title, maxLength = 80) {
+    if (!title) return 'Untitled';
+    if (title.length <= maxLength) return title;
+    return title.slice(0, maxLength) + '...';
   }
 
   return (
     <div className={styles.container}>
-      <div className={styles.actions}>
+      {/* Search and Filter Bar */}
+      <div className={styles.searchBar}>
+        <input
+          type="text"
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className={styles.searchInput}
+        />
         <button 
           className={styles.refreshButton}
           onClick={loadConversations}
+          title="Refresh"
         >
-          🔄 Refresh
+          ↻
+        </button>
+      </div>
+      
+      {/* Filter Tabs */}
+      <div className={styles.filterTabs}>
+        <button 
+          className={`${styles.filterTab} ${filter === 'all' ? styles.activeTab : ''}`}
+          onClick={() => setFilter('all')}
+        >
+          All ({conversations.length})
+        </button>
+        <button 
+          className={`${styles.filterTab} ${filter === 'chat' ? styles.activeTab : ''}`}
+          onClick={() => setFilter('chat')}
+        >
+          💬 Chats ({conversations.filter(c => c.type === 'chat').length})
+        </button>
+        <button 
+          className={`${styles.filterTab} ${filter === 'composer' ? styles.activeTab : ''}`}
+          onClick={() => setFilter('composer')}
+        >
+          🎹 Composer ({conversations.filter(c => c.type === 'composer').length})
         </button>
       </div>
 
@@ -147,46 +143,55 @@ export default function ConversationsPage() {
           <p>{error}</p>
           <button onClick={loadConversations}>Retry</button>
         </div>
-      ) : conversations.length === 0 ? (
+      ) : filteredConversations.length === 0 ? (
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>💬</span>
           <h3>No conversations found</h3>
-          <p>Your Cursor chat history will appear here</p>
+          <p>
+            {searchQuery 
+              ? 'Try adjusting your search query' 
+              : 'Your Cursor chat history will appear here'}
+          </p>
         </div>
       ) : (
         <div className={styles.conversationList}>
-          {conversations.map((conversation) => (
+          {filteredConversations.map((conversation) => (
             <div 
               key={conversation.id}
               className={styles.conversationCard}
               onClick={() => selectConversation(conversation)}
             >
-              <span className={styles.conversationIcon}>💬</span>
+              <span className={styles.conversationIcon}>
+                {getTypeIcon(conversation.type)}
+              </span>
               <div className={styles.conversationInfo}>
                 <h3 className={styles.conversationName}>
-                  {getProjectName(conversation)}
+                  {truncateTitle(conversation.title)}
                 </h3>
-                <p className={styles.conversationPath}>
-                  {conversation.path}
-                </p>
-                <span className={styles.conversationDate}>
-                  {formatDate(conversation.lastModified)}
-                </span>
+                <div className={styles.conversationMeta}>
+                  <span className={`${styles.typeTag} ${styles[conversation.type + 'Tag']}`}>
+                    {getTypeLabel(conversation.type)}
+                  </span>
+                  {conversation.projectName && (
+                    <span className={styles.projectName}>
+                      {conversation.projectName}
+                    </span>
+                  )}
+                </div>
+                <div className={styles.conversationFooter}>
+                  <span className={styles.messageCount}>
+                    {conversation.messageCount || 0} messages
+                  </span>
+                  <span className={styles.conversationDate}>
+                    {formatDate(conversation.timestamp)}
+                  </span>
+                </div>
               </div>
               <span className={styles.arrow}>›</span>
             </div>
           ))}
         </div>
       )}
-      
-      <div className={styles.notice}>
-        <h4>📌 Note</h4>
-        <p>
-          Cursor stores conversations in a proprietary format. 
-          This page shows available workspace sessions. 
-          Full conversation history integration is being developed.
-        </p>
-      </div>
     </div>
   );
 }
