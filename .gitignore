@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+client/dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Cursor Mobile auth persistence (contains sensitive tokens)
+.cursor-mobile-data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.cache/
+
+# iOS/Xcode
+ios-client/build/
+**/xcuserdata/
+**/DerivedData/
+*.xcuserstate
+*.ipa
+*.dSYM.zip
+*.dSYM

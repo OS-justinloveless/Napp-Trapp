@@ -1,0 +1,25 @@
+---
+description: Agent must not start or stop the server - only the user controls server lifecycle
+alwaysApply: true
+---
+
+# Server Management
+
+The agent must **never** start or stop the server in this project. Only the user is allowed to bring the server up or down.
+
+## Prohibited Actions
+
+- Do NOT run `npm start` in the `server/` directory
+- Do NOT run `npm run start` or any start scripts for the server
+- Do NOT run `node src/index.js` or similar commands to start the server
+- Do NOT kill or stop server processes
+
+## What to Do Instead
+
+If the server needs to be running for a task:
+1. Ask the user to start the server if it's not already running
+2. Wait for confirmation before proceeding with server-dependent operations
+
+If the server needs to be restarted:
+1. Inform the user that a server restart may be needed
+2. Let the user handle the restart themselves

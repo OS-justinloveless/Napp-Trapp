@@ -1,0 +1,37 @@
+---
+description: Verify iOS app builds successfully after Swift file changes
+globs: ios-client/**/*.swift
+alwaysApply: false
+---
+
+# iOS Build Verification
+
+After modifying any Swift files in `ios-client/`, you **must** rebuild the iOS app to verify compilation succeeds.
+
+## Build Command
+
+```bash
+cd ios-client && make build
+```
+
+## Requirements
+
+1. **Always rebuild** after editing Swift files
+2. **Check build output** for errors and warnings
+3. **Never submit code that doesn't build** - fix all compilation errors before considering the task complete
+4. If the build fails, analyze the error and fix it before proceeding
+
+## Build Failure Workflow
+
+1. Run `make build` from `ios-client/`
+2. If build fails, read the error output carefully
+3. Fix the Swift code causing the failure
+4. Rebuild to confirm the fix works
+5. Repeat until build succeeds
+
+## Common Issues
+
+- Missing imports: Add required `import` statements
+- Type mismatches: Ensure types match expected signatures
+- Missing protocol conformances: Implement all required methods
+- Syntax errors: Check for typos, missing braces, or semicolons
