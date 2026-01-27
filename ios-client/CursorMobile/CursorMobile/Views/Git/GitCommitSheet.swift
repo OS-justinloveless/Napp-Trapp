@@ -10,6 +10,7 @@ struct GitCommitSheet: View {
     
     @State private var commitMessage = ""
     @State private var isCommitting = false
+    @State private var isGenerating = false
     @State private var errorMessage: String?
     
     private var api: APIService? {
@@ -24,10 +25,32 @@ struct GitCommitSheet: View {
                 Section {
                     TextField("Commit message", text: $commitMessage, axis: .vertical)
                         .lineLimit(3...6)
+                        .disabled(isGenerating)
+                    
+                    // AI Generate button
+                    Button {
+                        Task { await generateCommitMessage() }
+                    } label: {
+                        HStack {
+                            if isGenerating {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Generating...")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .foregroundStyle(.purple)
+                                Text("Generate with AI")
+                                    .foregroundStyle(.purple)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isGenerating || stagedFiles.isEmpty)
                 } header: {
                     Text("Message")
                 } footer: {
-                    Text("Describe your changes briefly")
+                    Text("Describe your changes briefly, or use AI to generate a message based on your staged changes")
                 }
                 
                 Section {
@@ -78,7 +101,7 @@ struct GitCommitSheet: View {
                             Text("Commit")
                         }
                     }
-                    .disabled(commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCommitting)
+                    .disabled(commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCommitting || isGenerating)
                 }
             }
         }
@@ -110,6 +133,22 @@ struct GitCommitSheet: View {
         }
         
         isCommitting = false
+    }
+    
+    private func generateCommitMessage() async {
+        guard let api = api else { return }
+        
+        isGenerating = true
+        errorMessage = nil
+        
+        do {
+            let message = try await api.generateCommitMessage(projectId: project.id)
+            commitMessage = message
+        } catch {
+            errorMessage = "Failed to generate: \(error.localizedDescription)"
+        }
+        
+        isGenerating = false
     }
 }
 

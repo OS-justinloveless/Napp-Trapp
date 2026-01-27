@@ -1,4 +1,5 @@
 import express from 'express';
+import { spawn, execSync } from 'child_process';
 import { GitManager } from '../utils/GitManager.js';
 import { CursorWorkspace } from '../utils/CursorWorkspace.js';
 
@@ -72,16 +73,20 @@ gitRoutes.get('/:projectId/branches', async (req, res) => {
  * Body: { files: string[] }
  */
 gitRoutes.post('/:projectId/stage', async (req, res) => {
+  console.log('[git.js] POST /stage - projectId:', req.params.projectId, 'body:', req.body);
   try {
     const { projectId } = req.params;
     const { files } = req.body;
     
     if (!files || !Array.isArray(files) || files.length === 0) {
+      console.log('[git.js] stage - files array is empty or invalid');
       return res.status(400).json({ error: 'files array is required' });
     }
     
     const projectPath = await getProjectPath(projectId);
+    console.log('[git.js] stage - projectPath:', projectPath, 'files:', files);
     const result = await gitManager.stageFiles(projectPath, files);
+    console.log('[git.js] stage - result:', result);
     res.json(result);
   } catch (error) {
     console.error('Error staging files:', error);
@@ -352,6 +357,182 @@ gitRoutes.post('/:projectId/fetch', async (req, res) => {
     console.error('Error fetching:', error);
     res.status(error.message === 'Project not found' ? 404 : 500).json({
       error: 'Failed to fetch',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/clean
+ * Delete untracked files (undo adding new files)
+ * Body: { files: string[] }
+ */
+gitRoutes.post('/:projectId/clean', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { files } = req.body;
+    
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'files array is required' });
+    }
+    
+    const projectPath = await getProjectPath(projectId);
+    const result = await gitManager.cleanFiles(projectPath, files);
+    res.json(result);
+  } catch (error) {
+    console.error('Error cleaning files:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to clean files',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/generate-commit-message
+ * Generate a commit message using cursor-agent based on staged changes
+ * Returns: { message: string }
+ */
+gitRoutes.post('/:projectId/generate-commit-message', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const projectPath = await getProjectPath(projectId);
+    
+    console.log('[git.js] Generating commit message for project:', projectId);
+    
+    // Get the status to check for staged files
+    const status = await gitManager.getStatus(projectPath);
+    
+    if (status.staged.length === 0) {
+      return res.status(400).json({
+        error: 'No staged changes',
+        message: 'Please stage some changes before generating a commit message'
+      });
+    }
+    
+    // Get the diff for all staged changes
+    const { stdout: stagedDiff } = await gitManager.execGit(projectPath, [
+      'diff', '--cached', '--stat'
+    ]);
+    
+    // Get a more detailed diff (limited to avoid token limits)
+    const { stdout: detailedDiff } = await gitManager.execGit(projectPath, [
+      'diff', '--cached', '-U3'  // 3 lines of context
+    ], { timeout: 10000 });
+    
+    // Limit the diff size for the prompt
+    const maxDiffLength = 8000;
+    let diffForPrompt = detailedDiff;
+    let truncated = false;
+    if (detailedDiff.length > maxDiffLength) {
+      diffForPrompt = detailedDiff.substring(0, maxDiffLength) + '\n\n[Diff truncated...]';
+      truncated = true;
+    }
+    
+    // Build the prompt for cursor-agent
+    const prompt = `Generate a concise git commit message for the following staged changes. 
+
+The message should:
+- Start with a type prefix (feat:, fix:, refactor:, docs:, style:, test:, chore:)
+- Be a single line, under 72 characters
+- Describe WHAT changed and WHY, not HOW
+- Use imperative mood (e.g., "Add feature" not "Added feature")
+
+Staged files summary:
+${stagedDiff}
+
+${truncated ? '(Note: Full diff was truncated due to size)\n' : ''}
+Detailed diff:
+${diffForPrompt}
+
+Respond with ONLY the commit message, nothing else. No quotes, no explanation, just the message.`;
+
+    console.log('[git.js] Calling cursor-agent to generate commit message...');
+    
+    // Check if cursor-agent exists
+    try {
+      execSync('which cursor-agent', { stdio: 'pipe' });
+    } catch (e) {
+      return res.status(500).json({ 
+        error: 'cursor-agent CLI not found',
+        message: 'Please install cursor-agent: curl https://cursor.com/install -fsS | bash'
+      });
+    }
+    
+    // Call cursor-agent with the prompt
+    const result = await new Promise((resolve, reject) => {
+      const args = [
+        '-p',  // Print mode (non-interactive)
+        '--output-format', 'text',  // Plain text output
+        prompt
+      ];
+      
+      // Add workspace context for better understanding
+      args.unshift('--workspace', projectPath);
+      
+      const agent = spawn('cursor-agent', args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 60000  // 60 second timeout
+      });
+      
+      let output = '';
+      let errorOutput = '';
+      
+      agent.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      agent.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+        console.log('[git.js] cursor-agent stderr:', data.toString());
+      });
+      
+      agent.on('close', (code) => {
+        if (code !== 0) {
+          console.error('[git.js] cursor-agent failed with code:', code);
+          console.error('[git.js] stderr:', errorOutput);
+          reject(new Error(`cursor-agent failed: ${errorOutput || 'Unknown error'}`));
+        } else {
+          resolve(output.trim());
+        }
+      });
+      
+      agent.on('error', (err) => {
+        console.error('[git.js] cursor-agent spawn error:', err);
+        reject(err);
+      });
+    });
+    
+    // Clean up the response - remove any markdown formatting or extra content
+    let message = result
+      .replace(/^```[^\n]*\n?/, '')  // Remove opening code fence
+      .replace(/\n?```$/, '')         // Remove closing code fence
+      .replace(/^["']|["']$/g, '')    // Remove surrounding quotes
+      .trim();
+    
+    // If the response is multi-line, take just the first meaningful line
+    const lines = message.split('\n').filter(l => l.trim());
+    if (lines.length > 0) {
+      message = lines[0].trim();
+    }
+    
+    // Ensure the message isn't too long
+    if (message.length > 100) {
+      message = message.substring(0, 97) + '...';
+    }
+    
+    console.log('[git.js] Generated commit message:', message);
+    
+    res.json({ 
+      message,
+      stagedFiles: status.staged.length,
+      truncated
+    });
+    
+  } catch (error) {
+    console.error('Error generating commit message:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to generate commit message',
       message: error.message
     });
   }

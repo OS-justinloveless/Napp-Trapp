@@ -1,5 +1,145 @@
 import SwiftUI
 
+// MARK: - iOS-style Jiggle Animation Modifier
+
+extension View {
+    func jiggle(isJiggling: Bool, seed: Int = 0) -> some View {
+        self.modifier(JiggleModifier(isJiggling: isJiggling, seed: seed))
+    }
+}
+
+struct JiggleModifier: ViewModifier {
+    let isJiggling: Bool
+    let seed: Int
+    
+    // Use seed to create slight variations between items
+    private var rotationAmount: Double {
+        1.8 + Double(abs(seed) % 5) * 0.2  // 1.8 to 2.6 degrees
+    }
+    
+    private var duration: Double {
+        0.10 + Double(abs(seed) % 4) * 0.015  // 0.10 to 0.145 seconds
+    }
+    
+    private var phaseOffset: Double {
+        Double(abs(seed) % 7) * 0.3  // Offset to desync animations
+    }
+    
+    func body(content: Content) -> some View {
+        if isJiggling {
+            content
+                .modifier(ContinuousJiggleEffect(
+                    rotationAmount: rotationAmount,
+                    duration: duration,
+                    phaseOffset: phaseOffset
+                ))
+        } else {
+            content
+        }
+    }
+}
+
+struct ContinuousJiggleEffect: ViewModifier {
+    let rotationAmount: Double
+    let duration: Double
+    let phaseOffset: Double
+    
+    @State private var rotation: Double = 0
+    @State private var offset: CGFloat = 0
+    
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(rotation))
+            .offset(x: offset, y: 0)
+            .onAppear {
+                // Start with a random phase
+                rotation = -rotationAmount
+                offset = -0.5
+                
+                // Use a slight delay based on phase offset for desync
+                DispatchQueue.main.asyncAfter(deadline: .now() + phaseOffset * 0.05) {
+                    withAnimation(
+                        .easeInOut(duration: duration)
+                        .repeatForever(autoreverses: true)
+                    ) {
+                        rotation = rotationAmount
+                        offset = 0.5
+                    }
+                }
+            }
+    }
+}
+
+/// Represents a unified file change for display purposes
+/// Combines both tracked unstaged changes and untracked files
+struct UnifiedFileChange: Identifiable, Hashable {
+    let path: String
+    let status: String  // "modified", "added", "deleted", "renamed", "copied", "unmerged", "untracked"
+    let oldPath: String?
+    let isUntracked: Bool
+    
+    var id: String { path }
+    
+    /// Human-readable status
+    var statusDisplay: String {
+        switch status {
+        case "modified": return "Modified"
+        case "added", "untracked": return "Added"
+        case "deleted": return "Deleted"
+        case "renamed": return "Renamed"
+        case "copied": return "Copied"
+        case "unmerged": return "Conflict"
+        default: return status.capitalized
+        }
+    }
+    
+    /// SF Symbol for this status in unstaged context
+    var unstagedIcon: String {
+        switch status {
+        case "modified": return "pencil"
+        case "added", "untracked": return "plus"
+        case "deleted": return "minus"
+        case "renamed": return "arrow.right"
+        case "copied": return "doc.on.doc"
+        case "unmerged": return "exclamationmark.triangle"
+        default: return "questionmark"
+        }
+    }
+    
+    /// SF Symbol for this status in staged context (always checkmark for staged files)
+    var stagedIcon: String {
+        return "checkmark"
+    }
+    
+    /// Color for this status
+    var statusColor: Color {
+        switch status {
+        case "modified": return .orange
+        case "added", "untracked": return .green
+        case "deleted": return .red
+        case "renamed", "copied": return .blue
+        case "unmerged": return .yellow
+        default: return .gray
+        }
+    }
+    
+    /// Create from a GitFileChange (tracked file)
+    init(from change: GitFileChange) {
+        self.path = change.path
+        self.status = change.status
+        self.oldPath = change.oldPath
+        self.isUntracked = false
+    }
+    
+    /// Create from an untracked file path
+    init(untrackedPath: String) {
+        self.path = untrackedPath
+        self.status = "untracked"
+        self.oldPath = nil
+        self.isUntracked = true
+    }
+}
+
 struct GitView: View {
     let project: Project
     @EnvironmentObject var authManager: AuthManager
@@ -12,19 +152,56 @@ struct GitView: View {
     @State private var selectedFile: GitFileChange?
     @State private var selectedFileStaged = false
     @State private var showDiffSheet = false
+    @State private var selectedUntrackedFilePath: String?
+    @State private var showFileViewerSheet = false
     @State private var isPushing = false
     @State private var isPulling = false
     @State private var operationMessage: String?
     
     // Section collapse states
     @State private var isStagedExpanded = true
-    @State private var isUnstagedExpanded = true
-    @State private var isUntrackedExpanded = true
+    @State private var isChangesExpanded = true
+    
+    // Multi-select state
+    @State private var isSelectionMode = false
+    @State private var selectedUnstagedPaths: Set<String> = []
+    
+    // Confirmation dialog state
+    @State private var showUndoConfirmation = false
+    @State private var filesToUndo: [UnifiedFileChange] = []
     
     private var api: APIService? {
         guard let serverUrl = authManager.serverUrl,
               let token = authManager.token else { return nil }
         return APIService(serverUrl: serverUrl, token: token)
+    }
+    
+    /// Combined list of unstaged changes (tracked modifications + untracked files)
+    private var unstagedChanges: [UnifiedFileChange] {
+        guard let status = status else { return [] }
+        
+        var changes: [UnifiedFileChange] = []
+        
+        // Add tracked unstaged changes
+        for change in status.unstaged {
+            changes.append(UnifiedFileChange(from: change))
+        }
+        
+        // Add untracked files as "Added" files
+        for path in status.untracked {
+            let untrackedChange = UnifiedFileChange(untrackedPath: path)
+            print("[GitView] Adding untracked file to changes: \(path), isUntracked: \(untrackedChange.isUntracked)")
+            changes.append(untrackedChange)
+        }
+        
+        // Sort by path for consistent ordering
+        return changes.sorted { $0.path < $1.path }
+    }
+    
+    /// Staged changes as unified format
+    private var stagedChanges: [UnifiedFileChange] {
+        guard let status = status else { return [] }
+        return status.staged.map { UnifiedFileChange(from: $0) }.sorted { $0.path < $1.path }
     }
     
     var body: some View {
@@ -81,6 +258,20 @@ struct GitView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
+                    // Selection mode toggle (only show if there are unstaged changes)
+                    if !unstagedChanges.isEmpty {
+                        Button {
+                            withAnimation {
+                                isSelectionMode.toggle()
+                                if !isSelectionMode {
+                                    selectedUnstagedPaths.removeAll()
+                                }
+                            }
+                        } label: {
+                            Image(systemName: isSelectionMode ? "arrow.uturn.backward.circle.fill" : "arrow.uturn.backward.circle")
+                        }
+                    }
+                    
                     // Pull button
                     Button {
                         Task { await pull() }
@@ -130,6 +321,11 @@ struct GitView: View {
                 GitDiffSheet(project: project, file: file, staged: selectedFileStaged)
             }
         }
+        .sheet(isPresented: $showFileViewerSheet) {
+            if let filePath = selectedUntrackedFilePath {
+                FileViewerSheet(filePath: filePath)
+            }
+        }
         .alert("Git Operation", isPresented: .init(
             get: { operationMessage != nil },
             set: { if !$0 { operationMessage = nil } }
@@ -139,6 +335,20 @@ struct GitView: View {
             if let message = operationMessage {
                 Text(message)
             }
+        }
+        .confirmationDialog(
+            "Undo Changes",
+            isPresented: $showUndoConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Undo \(filesToUndo.count) file\(filesToUndo.count == 1 ? "" : "s")", role: .destructive) {
+                Task { await undoChanges(filesToUndo) }
+            }
+            Button("Cancel", role: .cancel) {
+                filesToUndo = []
+            }
+        } message: {
+            Text("This will permanently discard changes to the selected files. This cannot be undone.")
         }
     }
     
@@ -181,67 +391,45 @@ struct GitView: View {
                 }
                 
                 // Staged changes
-                if !status.staged.isEmpty {
+                if !stagedChanges.isEmpty {
                     Section {
                         if isStagedExpanded {
-                            ForEach(status.staged) { file in
-                                fileRow(file, staged: true)
+                            ForEach(stagedChanges) { file in
+                                stagedFileRow(file)
                             }
                         }
                     } header: {
                         collapsibleSectionHeader(
                             title: "Staged Changes",
-                            count: status.staged.count,
+                            count: stagedChanges.count,
                             isExpanded: $isStagedExpanded,
                             accentColor: .green,
                             actionLabel: "Unstage All",
                             actionIcon: "minus.circle"
                         ) {
-                            Task { await unstageAllFiles(status.staged.map { $0.path }) }
+                            Task { await unstageAllFiles(stagedChanges.map { $0.path }) }
                         }
                     }
                 }
                 
-                // Unstaged changes
-                if !status.unstaged.isEmpty {
+                // Changes (combined unstaged + untracked)
+                if !unstagedChanges.isEmpty {
                     Section {
-                        if isUnstagedExpanded {
-                            ForEach(status.unstaged) { file in
-                                fileRow(file, staged: false)
+                        if isChangesExpanded {
+                            ForEach(unstagedChanges) { file in
+                                unstagedFileRow(file)
                             }
                         }
                     } header: {
                         collapsibleSectionHeader(
                             title: "Changes",
-                            count: status.unstaged.count,
-                            isExpanded: $isUnstagedExpanded,
+                            count: unstagedChanges.count,
+                            isExpanded: $isChangesExpanded,
                             accentColor: .orange,
                             actionLabel: "Stage All",
                             actionIcon: "plus.circle"
                         ) {
-                            Task { await stageAllFiles(status.unstaged.map { $0.path }) }
-                        }
-                    }
-                }
-                
-                // Untracked files
-                if !status.untracked.isEmpty {
-                    Section {
-                        if isUntrackedExpanded {
-                            ForEach(status.untracked, id: \.self) { file in
-                                untrackedFileRow(file)
-                            }
-                        }
-                    } header: {
-                        collapsibleSectionHeader(
-                            title: "Untracked Files",
-                            count: status.untracked.count,
-                            isExpanded: $isUntrackedExpanded,
-                            accentColor: .gray,
-                            actionLabel: "Stage All",
-                            actionIcon: "plus.circle"
-                        ) {
-                            Task { await stageAllFiles(status.untracked) }
+                            Task { await stageAllFiles(unstagedChanges.map { $0.path }) }
                         }
                     }
                 }
@@ -259,9 +447,35 @@ struct GitView: View {
             }
             .listStyle(.insetGrouped)
             
-            // Floating commit button at bottom
-            if !status.staged.isEmpty {
-                VStack(spacing: 0) {
+            // Bottom action bar
+            VStack(spacing: 0) {
+                // Batch undo button when files are selected
+                if isSelectionMode && !selectedUnstagedPaths.isEmpty {
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        let selectedFiles = unstagedChanges.filter { selectedUnstagedPaths.contains($0.path) }
+                        filesToUndo = selectedFiles
+                        showUndoConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.uturn.backward")
+                            Text("Undo \(selectedUnstagedPaths.count) file\(selectedUnstagedPaths.count == 1 ? "" : "s")")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.red)
+                        .foregroundStyle(.white)
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGroupedBackground))
+                }
+                
+                // Commit button when there are staged changes
+                if !status.staged.isEmpty && selectedUnstagedPaths.isEmpty {
                     Divider()
                     
                     Button {
@@ -345,33 +559,29 @@ struct GitView: View {
     }
     
     @ViewBuilder
-    private func fileRow(_ file: GitFileChange, staged: Bool) -> some View {
+    private func stagedFileRow(_ file: UnifiedFileChange) -> some View {
         HStack(spacing: 12) {
-            // Stage/Unstage button
+            // Unstage button - uses checkmark icon for staged files
             Button {
-                Task {
-                    if staged {
-                        await unstageFile(file.path)
-                    } else {
-                        await stageFile(file.path)
-                    }
-                }
+                Task { await unstageFile(file.path) }
             } label: {
-                Image(systemName: staged ? "checkmark.circle.fill" : "circle")
+                Image(systemName: "checkmark.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(staged ? .green : .secondary)
+                    .foregroundStyle(.green)
             }
             .buttonStyle(.plain)
             
             // File info - tappable for diff
             Button {
-                selectedFile = file
-                selectedFileStaged = staged
-                showDiffSheet = true
+                if let originalFile = status?.staged.first(where: { $0.path == file.path }) {
+                    selectedFile = originalFile
+                    selectedFileStaged = true
+                    showDiffSheet = true
+                }
             } label: {
                 HStack {
-                    Image(systemName: file.statusIcon)
-                        .foregroundStyle(statusColor(for: file))
+                    Image(systemName: file.stagedIcon)
+                        .foregroundStyle(file.statusColor)
                         .frame(width: 24)
                     
                     VStack(alignment: .leading, spacing: 2) {
@@ -398,87 +608,109 @@ struct GitView: View {
             .buttonStyle(.plain)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if staged {
-                Button {
-                    Task { await unstageFile(file.path) }
-                } label: {
-                    Label("Unstage", systemImage: "minus.circle")
-                }
-                .tint(.orange)
-            } else {
-                Button {
-                    Task { await stageFile(file.path) }
-                } label: {
-                    Label("Stage", systemImage: "plus.circle")
-                }
-                .tint(.green)
+            Button {
+                Task { await unstageFile(file.path) }
+            } label: {
+                Label("Unstage", systemImage: "minus.circle")
             }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if !staged {
-                Button(role: .destructive) {
-                    Task { await discardFile(file.path) }
-                } label: {
-                    Label("Discard", systemImage: "trash")
-                }
-            }
+            .tint(.orange)
         }
     }
     
     @ViewBuilder
-    private func untrackedFileRow(_ path: String) -> some View {
+    private func unstagedFileRow(_ file: UnifiedFileChange) -> some View {
         HStack(spacing: 12) {
-            // Stage button
+            // Selection or stage button
+            if isSelectionMode {
+                // Selection checkbox
+                Button {
+                    if selectedUnstagedPaths.contains(file.path) {
+                        selectedUnstagedPaths.remove(file.path)
+                    } else {
+                        selectedUnstagedPaths.insert(file.path)
+                    }
+                } label: {
+                    Image(systemName: selectedUnstagedPaths.contains(file.path) ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(selectedUnstagedPaths.contains(file.path) ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Stage button
+                Button {
+                    print("[GitView] Stage button tapped for file: \(file.path), isUntracked: \(file.isUntracked)")
+                    Task { await stageFile(file.path) }
+                } label: {
+                    Image(systemName: "circle")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44) // Ensure adequate tap target
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+            }
+            
+            // File info - tappable for viewing
+            // For untracked files: shows file content
+            // For tracked files: shows diff
             Button {
-                Task { await stageFile(path) }
+                if file.isUntracked {
+                    // For untracked (newly added) files, show the file viewer
+                    // Need to get the full path - combine project path with relative path
+                    selectedUntrackedFilePath = "\(project.path)/\(file.path)"
+                    showFileViewerSheet = true
+                } else if let originalFile = status?.unstaged.first(where: { $0.path == file.path }) {
+                    // For tracked files with changes, show the diff
+                    selectedFile = originalFile
+                    selectedFileStaged = false
+                    showDiffSheet = true
+                }
             } label: {
-                Image(systemName: "circle")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Image(systemName: file.unstagedIcon)
+                        .foregroundStyle(file.statusColor)
+                        .frame(width: 24)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(file.path.components(separatedBy: "/").last ?? file.path)
+                            .foregroundStyle(.primary)
+                        if file.path.contains("/") {
+                            Text(file.path.components(separatedBy: "/").dropLast().joined(separator: "/"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Text(file.statusDisplay)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .buttonStyle(.plain)
-            
-            // File info
-            HStack {
-                Image(systemName: "questionmark.circle")
-                    .foregroundStyle(.gray)
-                    .frame(width: 24)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(path.components(separatedBy: "/").last ?? path)
-                        .foregroundStyle(.primary)
-                    if path.contains("/") {
-                        Text(path.components(separatedBy: "/").dropLast().joined(separator: "/"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                Text("Untracked")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
+        .jiggle(isJiggling: isSelectionMode, seed: file.path.hashValue)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
-                Task { await stageFile(path) }
+                print("[GitView] Swipe-to-stage triggered for file: \(file.path)")
+                Task { await stageFile(file.path) }
             } label: {
                 Label("Stage", systemImage: "plus.circle")
             }
             .tint(.green)
         }
-    }
-    
-    private func statusColor(for file: GitFileChange) -> Color {
-        switch file.status {
-        case "modified": return .orange
-        case "added": return .green
-        case "deleted": return .red
-        case "renamed", "copied": return .blue
-        case "unmerged": return .yellow
-        default: return .gray
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                filesToUndo = [file]
+                showUndoConfirmation = true
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
         }
     }
     
@@ -492,7 +724,12 @@ struct GitView: View {
         
         do {
             status = try await api.getGitStatus(projectId: project.id)
+            if let status = status {
+                print("[GitView] Loaded status - staged: \(status.staged.count), unstaged: \(status.unstaged.count), untracked: \(status.untracked.count)")
+                print("[GitView] Untracked files: \(status.untracked)")
+            }
         } catch {
+            print("[GitView] loadStatus error: \(error)")
             errorMessage = error.localizedDescription
         }
         
@@ -500,12 +737,22 @@ struct GitView: View {
     }
     
     private func stageFile(_ path: String) async {
-        guard let api = api else { return }
+        print("[GitView] stageFile called with path: \(path)")
+        print("[GitView] Project ID: \(project.id)")
+        
+        guard let api = api else {
+            print("[GitView] ERROR: api is nil - serverUrl: \(authManager.serverUrl ?? "nil"), token: \(authManager.token != nil ? "exists" : "nil")")
+            return
+        }
+        
+        print("[GitView] Calling API gitStage...")
         
         do {
-            _ = try await api.gitStage(projectId: project.id, files: [path])
+            let result = try await api.gitStage(projectId: project.id, files: [path])
+            print("[GitView] gitStage succeeded: \(result)")
             await loadStatus()
         } catch {
+            print("[GitView] gitStage FAILED: \(error)")
             operationMessage = "Failed to stage: \(error.localizedDescription)"
         }
     }
@@ -543,14 +790,31 @@ struct GitView: View {
         }
     }
     
-    private func discardFile(_ path: String) async {
-        guard let api = api else { return }
+    private func undoChanges(_ files: [UnifiedFileChange]) async {
+        guard let api = api, !files.isEmpty else { return }
+        
+        // Separate tracked and untracked files
+        let trackedFiles = files.filter { !$0.isUntracked }.map { $0.path }
+        let untrackedFiles = files.filter { $0.isUntracked }.map { $0.path }
         
         do {
-            _ = try await api.gitDiscard(projectId: project.id, files: [path])
+            // Discard changes for tracked files
+            if !trackedFiles.isEmpty {
+                _ = try await api.gitDiscard(projectId: project.id, files: trackedFiles)
+            }
+            
+            // Clean (delete) untracked files
+            if !untrackedFiles.isEmpty {
+                _ = try await api.gitClean(projectId: project.id, files: untrackedFiles)
+            }
+            
+            // Clear selection after undo
+            selectedUnstagedPaths.removeAll()
+            filesToUndo = []
+            
             await loadStatus()
         } catch {
-            operationMessage = "Failed to discard: \(error.localizedDescription)"
+            operationMessage = "Failed to undo: \(error.localizedDescription)"
         }
     }
     

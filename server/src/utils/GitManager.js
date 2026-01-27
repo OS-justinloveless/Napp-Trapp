@@ -15,6 +15,33 @@ export class GitManager {
   }
 
   /**
+   * Unquote a git path that may be quoted with double quotes
+   * Git quotes paths containing spaces or special characters
+   * @param {string} path - The potentially quoted path
+   * @returns {string} - The unquoted path
+   */
+  unquotePath(path) {
+    if (!path) return path;
+    
+    // Check if the path is quoted (starts and ends with double quotes)
+    if (path.startsWith('"') && path.endsWith('"')) {
+      // Remove the surrounding quotes
+      let unquoted = path.slice(1, -1);
+      
+      // Unescape common escape sequences
+      unquoted = unquoted
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      
+      return unquoted;
+    }
+    
+    return path;
+  }
+
+  /**
    * Execute a git command in a project directory
    * @param {string} projectPath - The project directory
    * @param {string[]} args - Git command arguments
@@ -98,15 +125,18 @@ export class GitManager {
 
       const indexStatus = line[0];
       const workTreeStatus = line[1];
-      const filePath = line.substring(3).trim();
+      let filePath = line.substring(3).trim();
+      
+      // Unquote the path (git quotes paths with spaces/special chars)
+      filePath = this.unquotePath(filePath);
 
-      // Handle renames (format: "R  old -> new")
+      // Handle renames (format: "R  old -> new" or "old" -> "new" if quoted)
       let actualPath = filePath;
       let oldPath = null;
       if (filePath.includes(' -> ')) {
         const parts = filePath.split(' -> ');
-        oldPath = parts[0];
-        actualPath = parts[1];
+        oldPath = this.unquotePath(parts[0]);
+        actualPath = this.unquotePath(parts[1]);
       }
 
       // Determine status
@@ -446,6 +476,26 @@ export class GitManager {
    */
   async fetch(projectPath, remote = 'origin') {
     await this.execGit(projectPath, ['fetch', remote]);
+    return { success: true };
+  }
+
+  /**
+   * Delete untracked files (undo adding new files)
+   * @param {string} projectPath - Project directory
+   * @param {string[]} files - Files to delete
+   */
+  async cleanFiles(projectPath, files) {
+    if (!files || files.length === 0) {
+      throw new Error('No files specified to clean');
+    }
+    
+    // Use git clean to remove untracked files
+    // -f = force (required), --  = path separator
+    // We clean each file individually for better control
+    for (const file of files) {
+      await this.execGit(projectPath, ['clean', '-f', '--', file]);
+    }
+    
     return { success: true };
   }
 }

@@ -712,12 +712,16 @@ class APIService {
     
     /// Stage files
     func gitStage(projectId: String, files: [String]) async throws -> GitOperationResponse {
+        print("[APIService] gitStage called - projectId: \(projectId), files: \(files)")
         let request = GitStageRequest(files: files)
         let body = try JSONEncoder().encode(request)
+        print("[APIService] gitStage request body: \(String(data: body, encoding: .utf8) ?? "nil")")
         let data = try await makeRequest(endpoint: "/api/git/\(projectId)/stage", method: "POST", body: body)
+        print("[APIService] gitStage response: \(String(data: data, encoding: .utf8) ?? "nil")")
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
+            print("[APIService] gitStage decode error: \(error)")
             throw APIError.decodingError(error)
         }
     }
@@ -843,6 +847,18 @@ class APIService {
         }
     }
     
+    /// Clean (delete) untracked files
+    func gitClean(projectId: String, files: [String]) async throws -> GitOperationResponse {
+        let request = GitStageRequest(files: files)
+        let body = try JSONEncoder().encode(request)
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/clean", method: "POST", body: body)
+        do {
+            return try decoder.decode(GitOperationResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
     /// Get recent commits
     func gitLog(projectId: String, limit: Int = 10) async throws -> [GitCommit] {
         let queryItems = [URLQueryItem(name: "limit", value: String(limit))]
@@ -852,6 +868,49 @@ class APIService {
             return response.commits
         } catch {
             throw APIError.decodingError(error)
+        }
+    }
+    
+    /// Generate a commit message using AI based on staged changes
+    func generateCommitMessage(projectId: String) async throws -> String {
+        // Use a longer timeout for AI generation
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 120
+        let longTimeoutSession = URLSession(configuration: config)
+        
+        guard let url = URL(string: "\(serverUrl)/api/git/\(projectId)/generate-commit-message") else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = "{}".data(using: .utf8)
+        
+        do {
+            let (data, response) = try await longTimeoutSession.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            switch httpResponse.statusCode {
+            case 200...299:
+                let result = try decoder.decode(GenerateCommitMessageResponse.self, from: data)
+                return result.message
+            case 401:
+                throw APIError.unauthorized
+            case 404:
+                throw APIError.notFound
+            default:
+                throw APIError.httpError(httpResponse.statusCode)
+            }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.networkError(error)
         }
     }
 }

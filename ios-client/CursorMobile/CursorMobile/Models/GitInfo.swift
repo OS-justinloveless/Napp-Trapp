@@ -182,3 +182,10 @@ struct GitOperationResponse: Codable {
     let hash: String?
     let branch: String?
 }
+
+/// Response from generate-commit-message endpoint
+struct GenerateCommitMessageResponse: Codable {
+    let message: String
+    let stagedFiles: Int?
+    let truncated: Bool?
+}
