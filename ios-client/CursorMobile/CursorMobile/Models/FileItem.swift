@@ -164,3 +164,25 @@ struct DeleteFileResponse: Codable {
     let success: Bool
     let deleted: String
 }
+
+struct RenameFileRequest: Codable {
+    let oldPath: String
+    let newName: String
+}
+
+struct RenameFileResponse: Codable {
+    let success: Bool
+    let oldPath: String
+    let newPath: String
+}
+
+struct MoveFileRequest: Codable {
+    let sourcePath: String
+    let destinationPath: String
+}
+
+struct MoveFileResponse: Codable {
+    let success: Bool
+    let sourcePath: String
+    let destinationPath: String
+}

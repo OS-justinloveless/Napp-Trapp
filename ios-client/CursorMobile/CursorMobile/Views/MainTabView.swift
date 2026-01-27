@@ -49,16 +49,16 @@ struct MainTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isDrawerOpen)
-        .gesture(
+        .simultaneousGesture(
             DragGesture()
                 .onEnded { value in
-                    // Swipe right to open drawer
-                    if value.translation.width > 50 && value.startLocation.x < 50 {
+                    // Swipe right to open drawer (only from left edge)
+                    if value.translation.width > 50 && value.startLocation.x < 30 {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             isDrawerOpen = true
                         }
                     }
-                    // Swipe left to close drawer
+                    // Swipe left to close drawer (only when drawer is open)
                     if value.translation.width < -50 && isDrawerOpen {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             isDrawerOpen = false

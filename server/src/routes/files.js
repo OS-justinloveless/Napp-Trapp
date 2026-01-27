@@ -199,4 +199,97 @@ router.delete('/delete', async (req, res) => {
   }
 });
 
+// Rename file or directory
+router.post('/rename', async (req, res) => {
+  try {
+    const { oldPath, newName } = req.body;
+    
+    if (!oldPath || !newName) {
+      return res.status(400).json({ error: 'Both oldPath and newName are required' });
+    }
+    
+    // Validate newName doesn't contain path separators
+    if (newName.includes('/') || newName.includes('\\')) {
+      return res.status(400).json({ error: 'newName should not contain path separators' });
+    }
+    
+    const directory = path.dirname(oldPath);
+    const newPath = path.join(directory, newName);
+    
+    // Check if source exists
+    try {
+      await fs.access(oldPath);
+    } catch (e) {
+      return res.status(404).json({ error: 'Source file or directory not found' });
+    }
+    
+    // Check if destination already exists
+    try {
+      await fs.access(newPath);
+      return res.status(409).json({ error: 'A file or directory with that name already exists' });
+    } catch (e) {
+      // Destination doesn't exist, which is what we want
+    }
+    
+    await fs.rename(oldPath, newPath);
+    
+    res.json({
+      success: true,
+      oldPath,
+      newPath
+    });
+  } catch (error) {
+    console.error('Error renaming file:', error);
+    res.status(500).json({ error: 'Failed to rename file or directory' });
+  }
+});
+
+// Move file or directory
+router.post('/move', async (req, res) => {
+  try {
+    const { sourcePath, destinationPath } = req.body;
+    
+    if (!sourcePath || !destinationPath) {
+      return res.status(400).json({ error: 'Both sourcePath and destinationPath are required' });
+    }
+    
+    // Check if source exists
+    try {
+      await fs.access(sourcePath);
+    } catch (e) {
+      return res.status(404).json({ error: 'Source file or directory not found' });
+    }
+    
+    // Check if destination directory exists
+    const destDir = path.dirname(destinationPath);
+    try {
+      const stats = await fs.stat(destDir);
+      if (!stats.isDirectory()) {
+        return res.status(400).json({ error: 'Destination parent path is not a directory' });
+      }
+    } catch (e) {
+      return res.status(404).json({ error: 'Destination directory not found' });
+    }
+    
+    // Check if destination already exists
+    try {
+      await fs.access(destinationPath);
+      return res.status(409).json({ error: 'A file or directory already exists at the destination' });
+    } catch (e) {
+      // Destination doesn't exist, which is what we want
+    }
+    
+    await fs.rename(sourcePath, destinationPath);
+    
+    res.json({
+      success: true,
+      sourcePath,
+      destinationPath
+    });
+  } catch (error) {
+    console.error('Error moving file:', error);
+    res.status(500).json({ error: 'Failed to move file or directory' });
+  }
+});
+
 export { router as fileRoutes };

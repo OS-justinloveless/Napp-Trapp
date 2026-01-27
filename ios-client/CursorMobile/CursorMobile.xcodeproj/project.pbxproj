@@ -32,8 +32,8 @@
 		F000000000000013 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000013 /* QRScannerView.swift */; };
 		F000000000000014 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000014 /* ProjectsView.swift */; };
 		F000000000000015 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000015 /* ProjectDetailView.swift */; };
-		F000000000000016 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000016 /* FileBrowserView.swift */; };
 		F000000000000017 /* FileViewerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000017 /* FileViewerSheet.swift */; };
+		F000000000000039 /* FileComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000039 /* FileComponents.swift */; };
 		F000000000000018 /* ConversationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000018 /* ConversationsView.swift */; };
 		F000000000000019 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000019 /* SettingsView.swift */; };
 		F000000000000020 /* CommonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000020 /* CommonViews.swift */; };
@@ -64,8 +64,8 @@
 		F100000000000013 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		F100000000000014 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		F100000000000015 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
-		F100000000000016 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		F100000000000017 /* FileViewerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileViewerSheet.swift; sourceTree = "<group>"; };
+		F100000000000039 /* FileComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileComponents.swift; sourceTree = "<group>"; };
 		F100000000000018 /* ConversationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationsView.swift; sourceTree = "<group>"; };
 		F100000000000019 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F100000000000020 /* CommonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommonViews.swift; sourceTree = "<group>"; };
@@ -207,8 +207,8 @@
 		F300000000000008 /* Files */ = {
 			isa = PBXGroup;
 			children = (
-				F100000000000016 /* FileBrowserView.swift */,
 				F100000000000017 /* FileViewerSheet.swift */,
+				F100000000000039 /* FileComponents.swift */,
 			);
 			path = Files;
 			sourceTree = "<group>";
@@ -335,8 +335,8 @@
 			96E84BD82F272EE700B612F2 /* SwiftTermWrapper.swift in Sources */,
 			96E84BD92F272EE700B612F2 /* TerminalListView.swift in Sources */,
 			96E84BDA2F272EE700B612F2 /* TerminalView.swift in Sources */,
-			F000000000000016 /* FileBrowserView.swift in Sources */,
 			F000000000000017 /* FileViewerSheet.swift in Sources */,
+			F000000000000039 /* FileComponents.swift in Sources */,
 			F000000000000018 /* ConversationsView.swift in Sources */,
 			F000000000000019 /* SettingsView.swift in Sources */,
 			F000000000000020 /* CommonViews.swift in Sources */,

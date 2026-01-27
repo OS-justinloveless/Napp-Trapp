@@ -312,6 +312,26 @@ class APIService {
         }
     }
     
+    func renameFile(oldPath: String, newName: String) async throws -> RenameFileResponse {
+        let body = try JSONEncoder().encode(RenameFileRequest(oldPath: oldPath, newName: newName))
+        let data = try await makeRequest(endpoint: "/api/files/rename", method: "POST", body: body)
+        do {
+            return try decoder.decode(RenameFileResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
+    func moveFile(sourcePath: String, destinationPath: String) async throws -> MoveFileResponse {
+        let body = try JSONEncoder().encode(MoveFileRequest(sourcePath: sourcePath, destinationPath: destinationPath))
+        let data = try await makeRequest(endpoint: "/api/files/move", method: "POST", body: body)
+        do {
+            return try decoder.decode(MoveFileResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
     // MARK: - Conversations
     
     func getConversations() async throws -> [Conversation] {
