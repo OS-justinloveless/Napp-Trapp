@@ -99,3 +99,74 @@ struct OpenCursorResponse: Codable {
     let success: Bool
     let message: String?
 }
+
+// MARK: - iOS Build Models
+
+struct iOSBuildRequest: Codable {
+    let configuration: String
+    let deviceName: String
+    let deviceId: String?
+    let isPhysicalDevice: Bool
+    let clean: Bool
+}
+
+struct iOSBuildResponse: Codable {
+    let success: Bool
+    let message: String?
+    let error: String?
+    let details: String?
+    let step: String?
+    let configuration: String?
+    let deviceName: String?
+    let isPhysicalDevice: Bool?
+}
+
+struct iOSDevice: Codable, Identifiable {
+    let name: String
+    let udid: String
+    let state: String
+    let iosVersion: String
+    let isBooted: Bool
+    let isPhysicalDevice: Bool
+    let deviceType: String
+    let connectionType: String?
+    
+    var id: String { udid }
+    
+    var displayName: String {
+        if isPhysicalDevice {
+            return "\(name) (Device)"
+        } else {
+            return name
+        }
+    }
+    
+    var statusText: String {
+        if isPhysicalDevice {
+            return connectionType ?? "Connected"
+        } else {
+            return isBooted ? "Booted" : state
+        }
+    }
+}
+
+struct iOSDevicesResponse: Codable {
+    let success: Bool
+    let devices: [iOSDevice]
+}
+
+// Legacy model for backward compatibility
+struct iOSSimulator: Codable, Identifiable {
+    let name: String
+    let udid: String
+    let state: String
+    let iosVersion: String
+    let isBooted: Bool
+    
+    var id: String { udid }
+}
+
+struct iOSSimulatorsResponse: Codable {
+    let success: Bool
+    let simulators: [iOSSimulator]
+}

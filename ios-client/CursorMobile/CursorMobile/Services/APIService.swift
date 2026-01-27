@@ -156,6 +156,88 @@ class APIService {
         }
     }
     
+    /// Build and run iOS app via Xcode on simulator or physical device
+    func buildAndRuniOSApp(
+        configuration: String = "Debug",
+        deviceName: String = "iPhone 16",
+        deviceId: String? = nil,
+        isPhysicalDevice: Bool = false,
+        clean: Bool = false
+    ) async throws -> iOSBuildResponse {
+        // Use longer timeout for build operations
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300 // 5 minutes
+        config.timeoutIntervalForResource = 360 // 6 minutes
+        let longTimeoutSession = URLSession(configuration: config)
+        
+        guard let url = URL(string: "\(serverUrl)/api/system/ios-build-run") else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = iOSBuildRequest(
+            configuration: configuration,
+            deviceName: deviceName,
+            deviceId: deviceId,
+            isPhysicalDevice: isPhysicalDevice,
+            clean: clean
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+        
+        do {
+            let (data, response) = try await longTimeoutSession.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            switch httpResponse.statusCode {
+            case 200...299:
+                return try decoder.decode(iOSBuildResponse.self, from: data)
+            case 401:
+                throw APIError.unauthorized
+            case 404:
+                throw APIError.notFound
+            default:
+                // Try to decode error response
+                if let errorResponse = try? decoder.decode(iOSBuildResponse.self, from: data) {
+                    throw APIError.streamingError(errorResponse.error ?? "Build failed")
+                }
+                throw APIError.httpError(httpResponse.statusCode)
+            }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
+    
+    /// Get list of available iOS devices (simulators and physical devices)
+    func getIOSDevices() async throws -> [iOSDevice] {
+        let data = try await makeRequest(endpoint: "/api/system/ios-devices")
+        do {
+            let response = try decoder.decode(iOSDevicesResponse.self, from: data)
+            return response.devices
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
+    /// Get list of available iOS simulators (legacy, for backward compatibility)
+    func getIOSSimulators() async throws -> [iOSSimulator] {
+        let data = try await makeRequest(endpoint: "/api/system/ios-simulators")
+        do {
+            let response = try decoder.decode(iOSSimulatorsResponse.self, from: data)
+            return response.simulators
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
     // MARK: - Projects
     
     func getProjects() async throws -> [Project] {

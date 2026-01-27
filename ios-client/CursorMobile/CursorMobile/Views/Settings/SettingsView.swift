@@ -11,6 +11,16 @@ struct SettingsView: View {
     @State private var error: String?
     @State private var showLogoutConfirmation = false
     
+    // iOS Build states
+    @State private var isBuilding = false
+    @State private var buildError: String?
+    @State private var buildSuccess: String?
+    @State private var showDevicePicker = false
+    @State private var availableDevices: [iOSDevice] = []
+    @State private var selectedDevice: iOSDevice?
+    @State private var cleanBuild = false
+    @State private var loadingDevices = false
+    
     var body: some View {
         List {
             // Connection Status Section
@@ -188,6 +198,98 @@ struct SettingsView: View {
             } header: {
                 Text("App")
             }
+            
+            // Developer Tools Section
+            Section {
+                // Device picker
+                Button {
+                    loadDevices()
+                    showDevicePicker = true
+                } label: {
+                    HStack {
+                        Label("Target Device", systemImage: selectedDevice?.isPhysicalDevice == true ? "iphone" : "ipad.and.iphone")
+                        Spacer()
+                        if loadingDevices {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            VStack(alignment: .trailing) {
+                                Text(selectedDevice?.name ?? "iPhone 16")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                if let device = selectedDevice {
+                                    Text(device.isPhysicalDevice ? "Physical Device" : "Simulator")
+                                        .font(.caption2)
+                                        .foregroundColor(device.isPhysicalDevice ? .orange : .blue)
+                                }
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .foregroundColor(.primary)
+                
+                // Clean build toggle
+                Toggle(isOn: $cleanBuild) {
+                    Label("Clean Build", systemImage: "trash")
+                }
+                
+                // Build and Run button
+                Button {
+                    buildAndRunApp()
+                } label: {
+                    HStack {
+                        if isBuilding {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Building...")
+                                .padding(.leading, 8)
+                        } else {
+                            Label("Build & Run", systemImage: "hammer.fill")
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(isBuilding)
+                
+                // Build status messages
+                if let success = buildSuccess {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(success)
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+                
+                if let error = buildError {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red)
+                            Text("Build Failed")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.red)
+                        }
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(5)
+                    }
+                }
+            } header: {
+                Text("Developer Tools")
+            } footer: {
+                if selectedDevice?.isPhysicalDevice == true {
+                    Text("Rebuild and reinstall the app on your physical device. Make sure your device is unlocked and trusted.")
+                } else {
+                    Text("Rebuild and reinstall the app on the simulator. The app will restart automatically.")
+                }
+            }
         }
         .navigationTitle("Settings")
         .toolbar {
@@ -209,8 +311,159 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .sheet(isPresented: $showDevicePicker) {
+            NavigationStack {
+                List {
+                    if loadingDevices {
+                        HStack {
+                            Spacer()
+                            ProgressView("Loading devices...")
+                            Spacer()
+                        }
+                    } else if availableDevices.isEmpty {
+                        Text("No devices available")
+                            .foregroundColor(.secondary)
+                    } else {
+                        // Physical devices section
+                        let physicalDevices = availableDevices.filter { $0.isPhysicalDevice }
+                        if !physicalDevices.isEmpty {
+                            Section {
+                                ForEach(physicalDevices) { device in
+                                    DeviceRow(
+                                        device: device,
+                                        isSelected: selectedDevice?.udid == device.udid,
+                                        onSelect: {
+                                            selectedDevice = device
+                                            showDevicePicker = false
+                                        }
+                                    )
+                                }
+                            } header: {
+                                Label("Physical Devices", systemImage: "iphone")
+                            }
+                        }
+                        
+                        // Simulators section
+                        let simulators = availableDevices.filter { !$0.isPhysicalDevice }
+                        if !simulators.isEmpty {
+                            Section {
+                                ForEach(simulators) { device in
+                                    DeviceRow(
+                                        device: device,
+                                        isSelected: selectedDevice?.udid == device.udid,
+                                        onSelect: {
+                                            selectedDevice = device
+                                            showDevicePicker = false
+                                        }
+                                    )
+                                }
+                            } header: {
+                                Label("Simulators", systemImage: "ipad.and.iphone")
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Select Device")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            loadDevices()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            showDevicePicker = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .onAppear {
             loadData()
+        }
+    }
+    
+    private func loadDevices() {
+        loadingDevices = true
+        
+        Task {
+            guard let api = authManager.createAPIService() else {
+                await MainActor.run {
+                    loadingDevices = false
+                }
+                return
+            }
+            
+            do {
+                let devices = try await api.getIOSDevices()
+                await MainActor.run {
+                    availableDevices = devices
+                    // If no device is selected, try to select a connected physical device first
+                    if selectedDevice == nil {
+                        if let physicalDevice = devices.first(where: { $0.isPhysicalDevice }) {
+                            selectedDevice = physicalDevice
+                        } else if let simulator = devices.first(where: { $0.isBooted }) {
+                            selectedDevice = simulator
+                        } else {
+                            selectedDevice = devices.first
+                        }
+                    }
+                    loadingDevices = false
+                }
+            } catch {
+                print("Failed to load devices: \(error)")
+                await MainActor.run {
+                    loadingDevices = false
+                }
+            }
+        }
+    }
+    
+    private func buildAndRunApp() {
+        isBuilding = true
+        buildError = nil
+        buildSuccess = nil
+        
+        Task {
+            guard let api = authManager.createAPIService() else {
+                await MainActor.run {
+                    buildError = "Not authenticated"
+                    isBuilding = false
+                }
+                return
+            }
+            
+            let deviceName = selectedDevice?.name ?? "iPhone 16"
+            let deviceId = selectedDevice?.udid
+            let isPhysical = selectedDevice?.isPhysicalDevice ?? false
+            
+            do {
+                let response = try await api.buildAndRuniOSApp(
+                    configuration: "Debug",
+                    deviceName: deviceName,
+                    deviceId: deviceId,
+                    isPhysicalDevice: isPhysical,
+                    clean: cleanBuild
+                )
+                
+                await MainActor.run {
+                    if response.success {
+                        buildSuccess = response.message ?? "Build successful!"
+                    } else {
+                        buildError = response.error ?? response.details ?? "Unknown build error"
+                    }
+                    isBuilding = false
+                }
+            } catch {
+                await MainActor.run {
+                    buildError = error.localizedDescription
+                    isBuilding = false
+                }
+            }
         }
     }
     
@@ -269,6 +522,55 @@ struct SettingsView: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Device Row Component
+
+private struct DeviceRow: View {
+    let device: iOSDevice
+    let isSelected: Bool
+    let onSelect: () -> Void
+    
+    var body: some View {
+        Button(action: onSelect) {
+            HStack {
+                Image(systemName: device.isPhysicalDevice ? "iphone" : "iphone.gen3")
+                    .foregroundColor(device.isPhysicalDevice ? .orange : .blue)
+                    .frame(width: 24)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(device.name)
+                        .foregroundColor(.primary)
+                    HStack(spacing: 4) {
+                        Text("iOS \(device.iosVersion)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        if device.isPhysicalDevice {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(device.connectionType?.capitalized ?? "Connected")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                if device.isBooted || device.isPhysicalDevice {
+                    Text(device.isPhysicalDevice ? "Connected" : "Booted")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+                
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.accentColor)
+                }
+            }
+        }
     }
 }
 
