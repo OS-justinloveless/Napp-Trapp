@@ -196,9 +196,19 @@ struct ProjectFilesView: View {
     }
     
     private func loadDirectory() {
-        isLoading = true
+        // Try to load from cache first
+        if let cached = CacheManager.shared.loadDirectory(path: currentPath) {
+            items = cached.data
+            isLoading = false
+            error = nil
+            print("[ProjectFilesView] Loaded \(items.count) items from cache")
+        } else {
+            isLoading = true
+        }
+        
         error = nil
         
+        // Fetch fresh data in the background
         Task {
             await refreshDirectory()
             isLoading = false
@@ -212,10 +222,20 @@ struct ProjectFilesView: View {
         }
         
         do {
-            items = try await api.listDirectory(path: currentPath)
+            let freshItems = try await api.listDirectory(path: currentPath)
+            items = freshItems
             error = nil
+            
+            // Save to cache
+            CacheManager.shared.saveDirectory(freshItems, path: currentPath)
+            print("[ProjectFilesView] Fetched and cached \(freshItems.count) items")
         } catch {
-            self.error = error.localizedDescription
+            // Only show error if we don't have cached data
+            if items.isEmpty {
+                self.error = error.localizedDescription
+            } else {
+                print("[ProjectFilesView] Failed to refresh directory, using cached data: \(error)")
+            }
         }
     }
     

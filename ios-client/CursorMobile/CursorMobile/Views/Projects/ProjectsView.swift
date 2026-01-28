@@ -81,9 +81,19 @@ struct ProjectsView: View {
     }
     
     private func loadProjects() {
-        isLoading = true
+        // Try to load from cache first
+        if let cached = CacheManager.shared.loadProjects() {
+            projects = cached.data
+            isLoading = false
+            error = nil
+            print("[ProjectsView] Loaded \(projects.count) projects from cache")
+        } else {
+            isLoading = true
+        }
+        
         error = nil
         
+        // Fetch fresh data in the background
         Task {
             await refreshProjects()
             isLoading = false
@@ -97,10 +107,20 @@ struct ProjectsView: View {
         }
         
         do {
-            projects = try await api.getProjects()
+            let freshProjects = try await api.getProjects()
+            projects = freshProjects
             error = nil
+            
+            // Save to cache
+            CacheManager.shared.saveProjects(freshProjects)
+            print("[ProjectsView] Fetched and cached \(freshProjects.count) projects")
         } catch {
-            self.error = error.localizedDescription
+            // Only show error if we don't have cached data
+            if projects.isEmpty {
+                self.error = error.localizedDescription
+            } else {
+                print("[ProjectsView] Failed to refresh projects, using cached data: \(error)")
+            }
         }
     }
     

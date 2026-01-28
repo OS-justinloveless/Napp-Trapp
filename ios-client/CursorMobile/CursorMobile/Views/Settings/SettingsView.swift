@@ -186,6 +186,19 @@ struct SettingsView: View {
                 Text("Account")
             }
             
+            // Cache Section
+            Section {
+                Button {
+                    CacheManager.shared.clearAll()
+                } label: {
+                    Label("Clear Cache", systemImage: "trash")
+                }
+            } header: {
+                Text("Storage")
+            } footer: {
+                Text("Cached data allows the app to load content faster. Clearing the cache will require fresh data to be fetched from the server.")
+            }
+            
             // App Info
             Section {
                 HStack {

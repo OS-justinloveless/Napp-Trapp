@@ -86,6 +86,9 @@ class AuthManager: ObservableObject {
         error = nil
         
         UserDefaults.standard.removeObject(forKey: storageKey)
+        
+        // Clear cached data on logout
+        CacheManager.shared.clearAll()
     }
     
     private func saveCredentials() {

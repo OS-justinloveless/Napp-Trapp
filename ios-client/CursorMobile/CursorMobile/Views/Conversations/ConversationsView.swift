@@ -61,9 +61,19 @@ struct ConversationsView: View {
     }
     
     private func loadConversations() {
-        isLoading = true
+        // Try to load from cache first
+        if let cached = CacheManager.shared.loadConversations() {
+            conversations = cached.data
+            isLoading = false
+            error = nil
+            print("[ConversationsView] Loaded \(conversations.count) conversations from cache")
+        } else {
+            isLoading = true
+        }
+        
         error = nil
         
+        // Fetch fresh data in the background
         Task {
             await refreshConversations()
             isLoading = false
@@ -77,10 +87,20 @@ struct ConversationsView: View {
         }
         
         do {
-            conversations = try await api.getConversations()
+            let freshConversations = try await api.getConversations()
+            conversations = freshConversations
             error = nil
+            
+            // Save to cache
+            CacheManager.shared.saveConversations(freshConversations)
+            print("[ConversationsView] Fetched and cached \(freshConversations.count) conversations")
         } catch {
-            self.error = error.localizedDescription
+            // Only show error if we don't have cached data
+            if conversations.isEmpty {
+                self.error = error.localizedDescription
+            } else {
+                print("[ConversationsView] Failed to refresh conversations, using cached data: \(error)")
+            }
         }
     }
 }
