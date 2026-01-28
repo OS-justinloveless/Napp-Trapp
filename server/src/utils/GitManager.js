@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
+import { readdir, stat } from 'fs/promises';
 
 const execFileAsync = promisify(execFile);
 
@@ -497,5 +498,102 @@ export class GitManager {
     }
     
     return { success: true };
+  }
+
+  /**
+   * Scan a project directory for all git repositories (including sub-repos)
+   * @param {string} projectPath - Root project directory to scan
+   * @param {object} options - Scan options
+   * @param {number} options.maxDepth - Maximum directory depth to scan (default: 5)
+   * @param {string[]} options.excludeDirs - Directories to exclude (default: node_modules, vendor, Pods, .git)
+   * @returns {Promise<Array<{path: string, name: string}>>} - Array of repository info
+   */
+  async scanForRepositories(projectPath, options = {}) {
+    const maxDepth = options.maxDepth || 5;
+    const excludeDirs = new Set(options.excludeDirs || [
+      'node_modules',
+      'vendor',
+      'Pods',
+      '.git',
+      'build',
+      'dist',
+      '.build',
+      'DerivedData'
+    ]);
+
+    const repositories = [];
+
+    // Check if the root is a git repo
+    const rootGitPath = path.join(projectPath, '.git');
+    try {
+      const rootGitStat = await stat(rootGitPath);
+      if (rootGitStat.isDirectory()) {
+        repositories.push({
+          path: '.',
+          name: path.basename(projectPath)
+        });
+      }
+    } catch {
+      // Root is not a git repo, that's fine
+    }
+
+    // Recursive scan function
+    const scanDirectory = async (dirPath, depth) => {
+      if (depth > maxDepth) return;
+
+      try {
+        const entries = await readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          
+          const entryName = entry.name;
+          
+          // Skip excluded directories
+          if (excludeDirs.has(entryName)) continue;
+          
+          // Skip hidden directories (except we need to check for .git)
+          if (entryName.startsWith('.') && entryName !== '.git') continue;
+
+          const fullPath = path.join(dirPath, entryName);
+
+          // Check if this directory contains a .git folder
+          const gitPath = path.join(fullPath, '.git');
+          try {
+            const gitStat = await stat(gitPath);
+            if (gitStat.isDirectory()) {
+              // Found a sub-repository
+              const relativePath = path.relative(projectPath, fullPath);
+              repositories.push({
+                path: relativePath,
+                name: entryName
+              });
+              // Don't scan inside git repos for more repos (they manage their own)
+              continue;
+            }
+          } catch {
+            // No .git folder, continue scanning
+          }
+
+          // Recursively scan subdirectory
+          await scanDirectory(fullPath, depth + 1);
+        }
+      } catch (error) {
+        // Permission denied or other errors, skip this directory
+        console.warn(`[GitManager] Could not scan directory ${dirPath}:`, error.message);
+      }
+    };
+
+    // Start scanning from root (depth 0)
+    await scanDirectory(projectPath, 0);
+
+    // Sort: root first, then alphabetically by path
+    repositories.sort((a, b) => {
+      if (a.path === '.') return -1;
+      if (b.path === '.') return 1;
+      return a.path.localeCompare(b.path);
+    });
+
+    return repositories;
   }
 }

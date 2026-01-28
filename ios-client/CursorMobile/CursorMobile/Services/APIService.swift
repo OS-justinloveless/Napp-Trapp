@@ -771,9 +771,28 @@ class APIService {
     
     // MARK: - Git Operations
     
-    /// Get git status for a project
-    func getGitStatus(projectId: String) async throws -> GitStatus {
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/status")
+    /// Scan project for all git repositories (including sub-repos)
+    func scanGitRepositories(projectId: String, maxDepth: Int? = nil) async throws -> [GitRepository] {
+        var queryItems: [URLQueryItem] = []
+        if let maxDepth = maxDepth {
+            queryItems.append(URLQueryItem(name: "maxDepth", value: String(maxDepth)))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/scan-repos", queryItems: queryItems.isEmpty ? nil : queryItems)
+        do {
+            let response = try decoder.decode(GitRepositoriesResponse.self, from: data)
+            return response.repositories
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
+    /// Get git status for a project or sub-repository
+    func getGitStatus(projectId: String, repoPath: String? = nil) async throws -> GitStatus {
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/status", queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitStatus.self, from: data)
         } catch {
@@ -781,9 +800,13 @@ class APIService {
         }
     }
     
-    /// Get git branches for a project
-    func getGitBranches(projectId: String) async throws -> [GitBranch] {
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/branches")
+    /// Get git branches for a project or sub-repository
+    func getGitBranches(projectId: String, repoPath: String? = nil) async throws -> [GitBranch] {
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/branches", queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             let response = try decoder.decode(GitBranchesResponse.self, from: data)
             return response.branches
@@ -793,12 +816,16 @@ class APIService {
     }
     
     /// Stage files
-    func gitStage(projectId: String, files: [String]) async throws -> GitOperationResponse {
-        print("[APIService] gitStage called - projectId: \(projectId), files: \(files)")
+    func gitStage(projectId: String, files: [String], repoPath: String? = nil) async throws -> GitOperationResponse {
+        print("[APIService] gitStage called - projectId: \(projectId), files: \(files), repoPath: \(repoPath ?? "nil")")
         let request = GitStageRequest(files: files)
         let body = try JSONEncoder().encode(request)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
         print("[APIService] gitStage request body: \(String(data: body, encoding: .utf8) ?? "nil")")
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/stage", method: "POST", body: body)
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/stage", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         print("[APIService] gitStage response: \(String(data: data, encoding: .utf8) ?? "nil")")
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
@@ -809,10 +836,14 @@ class APIService {
     }
     
     /// Unstage files
-    func gitUnstage(projectId: String, files: [String]) async throws -> GitOperationResponse {
+    func gitUnstage(projectId: String, files: [String], repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitStageRequest(files: files)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/unstage", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/unstage", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -821,10 +852,14 @@ class APIService {
     }
     
     /// Discard changes
-    func gitDiscard(projectId: String, files: [String]) async throws -> GitOperationResponse {
+    func gitDiscard(projectId: String, files: [String], repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitStageRequest(files: files)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/discard", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/discard", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -833,10 +868,14 @@ class APIService {
     }
     
     /// Create a commit
-    func gitCommit(projectId: String, message: String, files: [String]? = nil) async throws -> GitOperationResponse {
+    func gitCommit(projectId: String, message: String, files: [String]? = nil, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitCommitRequest(message: message, files: files)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/commit", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/commit", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -845,10 +884,14 @@ class APIService {
     }
     
     /// Push to remote
-    func gitPush(projectId: String, remote: String? = nil, branch: String? = nil) async throws -> GitOperationResponse {
+    func gitPush(projectId: String, remote: String? = nil, branch: String? = nil, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitPushPullRequest(remote: remote, branch: branch)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/push", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/push", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -857,10 +900,14 @@ class APIService {
     }
     
     /// Pull from remote
-    func gitPull(projectId: String, remote: String? = nil, branch: String? = nil) async throws -> GitOperationResponse {
+    func gitPull(projectId: String, remote: String? = nil, branch: String? = nil, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitPushPullRequest(remote: remote, branch: branch)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/pull", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/pull", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -869,10 +916,14 @@ class APIService {
     }
     
     /// Checkout a branch
-    func gitCheckout(projectId: String, branch: String) async throws -> GitOperationResponse {
+    func gitCheckout(projectId: String, branch: String, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitCheckoutRequest(branch: branch)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/checkout", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/checkout", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -881,10 +932,14 @@ class APIService {
     }
     
     /// Create a new branch
-    func gitCreateBranch(projectId: String, name: String, checkout: Bool = true) async throws -> GitOperationResponse {
+    func gitCreateBranch(projectId: String, name: String, checkout: Bool = true, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitCreateBranchRequest(name: name, checkout: checkout)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/branch", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/branch", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -893,16 +948,19 @@ class APIService {
     }
     
     /// Get diff for a file (returns just the diff string for backward compatibility)
-    func gitDiff(projectId: String, file: String, staged: Bool = false) async throws -> String {
-        let result = try await gitDiffFull(projectId: projectId, file: file, staged: staged)
+    func gitDiff(projectId: String, file: String, staged: Bool = false, repoPath: String? = nil) async throws -> String {
+        let result = try await gitDiffFull(projectId: projectId, file: file, staged: staged, repoPath: repoPath)
         return result.diff
     }
     
     /// Get diff for a file with full response including truncation info
-    func gitDiffFull(projectId: String, file: String, staged: Bool = false) async throws -> (diff: String, truncated: Bool, totalLines: Int) {
+    func gitDiffFull(projectId: String, file: String, staged: Bool = false, repoPath: String? = nil) async throws -> (diff: String, truncated: Bool, totalLines: Int) {
         var queryItems = [URLQueryItem(name: "file", value: file)]
         if staged {
             queryItems.append(URLQueryItem(name: "staged", value: "true"))
+        }
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
         }
         let data = try await makeRequest(endpoint: "/api/git/\(projectId)/diff", queryItems: queryItems)
         do {
@@ -918,10 +976,14 @@ class APIService {
     }
     
     /// Fetch from remote
-    func gitFetch(projectId: String, remote: String? = nil) async throws -> GitOperationResponse {
+    func gitFetch(projectId: String, remote: String? = nil, repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitFetchRequest(remote: remote)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/fetch", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/fetch", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -930,10 +992,14 @@ class APIService {
     }
     
     /// Clean (delete) untracked files
-    func gitClean(projectId: String, files: [String]) async throws -> GitOperationResponse {
+    func gitClean(projectId: String, files: [String], repoPath: String? = nil) async throws -> GitOperationResponse {
         let request = GitStageRequest(files: files)
         let body = try JSONEncoder().encode(request)
-        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/clean", method: "POST", body: body)
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/clean", method: "POST", body: body, queryItems: queryItems.isEmpty ? nil : queryItems)
         do {
             return try decoder.decode(GitOperationResponse.self, from: data)
         } catch {
@@ -941,9 +1007,27 @@ class APIService {
         }
     }
     
+    /// Get list of remotes
+    func getGitRemotes(projectId: String, repoPath: String? = nil) async throws -> [GitRemote] {
+        var queryItems: [URLQueryItem] = []
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
+        let data = try await makeRequest(endpoint: "/api/git/\(projectId)/remotes", queryItems: queryItems.isEmpty ? nil : queryItems)
+        do {
+            let response = try decoder.decode(GitRemotesResponse.self, from: data)
+            return response.remotes
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
     /// Get recent commits
-    func gitLog(projectId: String, limit: Int = 10) async throws -> [GitCommit] {
-        let queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+    func gitLog(projectId: String, limit: Int = 10, repoPath: String? = nil) async throws -> [GitCommit] {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let repoPath = repoPath, repoPath != "." {
+            queryItems.append(URLQueryItem(name: "repoPath", value: repoPath))
+        }
         let data = try await makeRequest(endpoint: "/api/git/\(projectId)/log", queryItems: queryItems)
         do {
             let response = try decoder.decode(GitLogResponse.self, from: data)
@@ -954,14 +1038,20 @@ class APIService {
     }
     
     /// Generate a commit message using AI based on staged changes
-    func generateCommitMessage(projectId: String) async throws -> String {
+    func generateCommitMessage(projectId: String, repoPath: String? = nil) async throws -> String {
         // Use a longer timeout for AI generation
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 120
         let longTimeoutSession = URLSession(configuration: config)
         
-        guard let url = URL(string: "\(serverUrl)/api/git/\(projectId)/generate-commit-message") else {
+        var urlString = "\(serverUrl)/api/git/\(projectId)/generate-commit-message"
+        if let repoPath = repoPath, repoPath != "." {
+            let encodedRepoPath = repoPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? repoPath
+            urlString += "?repoPath=\(encodedRepoPath)"
+        }
+        
+        guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
         

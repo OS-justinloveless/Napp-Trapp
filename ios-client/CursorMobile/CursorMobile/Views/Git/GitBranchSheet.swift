@@ -3,6 +3,7 @@ import SwiftUI
 struct GitBranchSheet: View {
     let project: Project
     let currentBranch: String
+    let repoPath: String?  // nil for root repo, relative path for sub-repos
     let onBranchChange: () -> Void
     
     @EnvironmentObject var authManager: AuthManager
@@ -21,6 +22,22 @@ struct GitBranchSheet: View {
         guard let serverUrl = authManager.serverUrl,
               let token = authManager.token else { return nil }
         return APIService(serverUrl: serverUrl, token: token)
+    }
+    
+    // Convenience init for backward compatibility (root repo)
+    init(project: Project, currentBranch: String, onBranchChange: @escaping () -> Void) {
+        self.project = project
+        self.currentBranch = currentBranch
+        self.repoPath = nil
+        self.onBranchChange = onBranchChange
+    }
+    
+    // Full init with repoPath
+    init(project: Project, currentBranch: String, repoPath: String?, onBranchChange: @escaping () -> Void) {
+        self.project = project
+        self.currentBranch = currentBranch
+        self.repoPath = repoPath
+        self.onBranchChange = onBranchChange
     }
     
     private var filteredBranches: [GitBranch] {
@@ -190,7 +207,7 @@ struct GitBranchSheet: View {
         errorMessage = nil
         
         do {
-            branches = try await api.getGitBranches(projectId: project.id)
+            branches = try await api.getGitBranches(projectId: project.id, repoPath: repoPath)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -204,7 +221,7 @@ struct GitBranchSheet: View {
         isCheckingOut = true
         
         do {
-            _ = try await api.gitCheckout(projectId: project.id, branch: branch)
+            _ = try await api.gitCheckout(projectId: project.id, branch: branch, repoPath: repoPath)
             onBranchChange()
             dismiss()
         } catch {
@@ -223,7 +240,7 @@ struct GitBranchSheet: View {
         isCreatingBranch = true
         
         do {
-            _ = try await api.gitCreateBranch(projectId: project.id, name: name, checkout: true)
+            _ = try await api.gitCreateBranch(projectId: project.id, name: name, checkout: true, repoPath: repoPath)
             newBranchName = ""
             onBranchChange()
             dismiss()

@@ -3,6 +3,7 @@ import SwiftUI
 struct GitCommitSheet: View {
     let project: Project
     let stagedFiles: [GitFileChange]
+    let repoPath: String?  // nil for root repo, relative path for sub-repos
     let onCommit: () -> Void
     
     @EnvironmentObject var authManager: AuthManager
@@ -18,8 +19,22 @@ struct GitCommitSheet: View {
               let token = authManager.token else { return nil }
         return APIService(serverUrl: serverUrl, token: token)
     }
-
-    // test
+    
+    // Convenience init for backward compatibility (root repo)
+    init(project: Project, stagedFiles: [GitFileChange], onCommit: @escaping () -> Void) {
+        self.project = project
+        self.stagedFiles = stagedFiles
+        self.repoPath = nil
+        self.onCommit = onCommit
+    }
+    
+    // Full init with repoPath
+    init(project: Project, stagedFiles: [GitFileChange], repoPath: String?, onCommit: @escaping () -> Void) {
+        self.project = project
+        self.stagedFiles = stagedFiles
+        self.repoPath = repoPath
+        self.onCommit = onCommit
+    }
     
     var body: some View {
         NavigationStack {
@@ -127,7 +142,7 @@ struct GitCommitSheet: View {
         errorMessage = nil
         
         do {
-            _ = try await api.gitCommit(projectId: project.id, message: commitMessage.trimmingCharacters(in: .whitespacesAndNewlines))
+            _ = try await api.gitCommit(projectId: project.id, message: commitMessage.trimmingCharacters(in: .whitespacesAndNewlines), repoPath: repoPath)
             onCommit()
             dismiss()
         } catch {
@@ -144,7 +159,7 @@ struct GitCommitSheet: View {
         errorMessage = nil
         
         do {
-            let message = try await api.generateCommitMessage(projectId: project.id)
+            let message = try await api.generateCommitMessage(projectId: project.id, repoPath: repoPath)
             commitMessage = message
         } catch {
             errorMessage = "Failed to generate: \(error.localizedDescription)"

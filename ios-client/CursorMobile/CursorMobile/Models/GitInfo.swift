@@ -144,6 +144,23 @@ struct GitRemotesResponse: Codable {
     let remotes: [GitRemote]
 }
 
+// MARK: - Git Repositories (Multi-repo support)
+
+/// Represents a git repository discovered within a project
+struct GitRepository: Codable, Identifiable, Hashable {
+    let path: String      // Relative path ("." for root, "packages/sub" for sub-repos)
+    let name: String      // Display name (usually the directory name)
+    
+    var id: String { path }
+    
+    /// Whether this is the root repository
+    var isRoot: Bool { path == "." }
+}
+
+struct GitRepositoriesResponse: Codable {
+    let repositories: [GitRepository]
+}
+
 // MARK: - API Request Types
 
 struct GitStageRequest: Codable {

@@ -161,6 +161,35 @@ class CacheManager {
     func loadProjectTree(projectId: String) -> CachedData<[FileTreeItem]>? {
         load(forKey: projectTreeKey(projectId: projectId), as: [FileTreeItem].self)
     }
+    
+    /// Cache key for git repositories in a project
+    private func gitRepositoriesKey(projectId: String) -> String {
+        "project_\(projectId)_git_repos"
+    }
+    
+    /// Save discovered git repositories to cache
+    /// Uses a longer expiration since repos rarely change
+    func saveGitRepositories(_ repos: [GitRepository], projectId: String) {
+        save(repos, forKey: gitRepositoriesKey(projectId: projectId))
+    }
+    
+    /// Load cached git repositories for a project
+    func loadGitRepositories(projectId: String) -> CachedData<[GitRepository]>? {
+        // Repos are cached for 24 hours since they rarely change
+        let cached = load(forKey: gitRepositoriesKey(projectId: projectId), as: [GitRepository].self)
+        if let cached = cached {
+            // Override stale check - repos are valid for 24 hours
+            let reposCacheExpiration: TimeInterval = 86400 // 24 hours
+            let isStale = cached.age > reposCacheExpiration
+            return CachedData(data: cached.data, timestamp: cached.timestamp, isStale: isStale)
+        }
+        return nil
+    }
+    
+    /// Clear cached git repositories for a project (e.g., after a rescan)
+    func clearGitRepositories(projectId: String) {
+        remove(forKey: gitRepositoriesKey(projectId: projectId))
+    }
 }
 
 // MARK: - Supporting Types

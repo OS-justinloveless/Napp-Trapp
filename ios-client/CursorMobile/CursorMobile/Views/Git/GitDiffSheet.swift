@@ -4,6 +4,7 @@ struct GitDiffSheet: View {
     let project: Project
     let file: GitFileChange?
     let staged: Bool
+    let repoPath: String?  // nil for root repo, relative path for sub-repos
     
     /// For untracked (new) files, we only need the file path
     let untrackedFilePath: String?
@@ -19,19 +20,39 @@ struct GitDiffSheet: View {
     @State private var isTruncated = false
     @State private var loadTask: Task<Void, Never>?
     
-    /// Convenience initializer for tracked files
+    /// Convenience initializer for tracked files (backward compatibility)
     init(project: Project, file: GitFileChange, staged: Bool) {
         self.project = project
         self.file = file
         self.staged = staged
+        self.repoPath = nil
         self.untrackedFilePath = nil
     }
     
-    /// Initializer for untracked (new) files - shows all content as added
+    /// Initializer for tracked files with repoPath
+    init(project: Project, file: GitFileChange, staged: Bool, repoPath: String?) {
+        self.project = project
+        self.file = file
+        self.staged = staged
+        self.repoPath = repoPath
+        self.untrackedFilePath = nil
+    }
+    
+    /// Initializer for untracked (new) files - shows all content as added (backward compatibility)
     init(project: Project, untrackedFilePath: String) {
         self.project = project
         self.file = nil
         self.staged = false
+        self.repoPath = nil
+        self.untrackedFilePath = untrackedFilePath
+    }
+    
+    /// Initializer for untracked (new) files with repoPath
+    init(project: Project, untrackedFilePath: String, repoPath: String?) {
+        self.project = project
+        self.file = nil
+        self.staged = false
+        self.repoPath = repoPath
         self.untrackedFilePath = untrackedFilePath
     }
     
@@ -212,7 +233,7 @@ struct GitDiffSheet: View {
         errorMessage = nil
         
         do {
-            let result = try await api.gitDiffFull(projectId: project.id, file: file.path, staged: staged)
+            let result = try await api.gitDiffFull(projectId: project.id, file: file.path, staged: staged, repoPath: repoPath)
             
             // Check if task was cancelled
             guard !Task.isCancelled else { return }
@@ -251,8 +272,12 @@ struct GitDiffSheet: View {
         errorMessage = nil
         
         do {
-            // Construct the full file path
-            let fullPath = "\(project.path)/\(filePath)"
+            // Construct the full file path, including repoPath if present
+            var fullPath = project.path
+            if let repoPath = repoPath, repoPath != "." {
+                fullPath = "\(fullPath)/\(repoPath)"
+            }
+            fullPath = "\(fullPath)/\(filePath)"
             let fileContent = try await api.readFile(path: fullPath)
             
             // Check if task was cancelled
