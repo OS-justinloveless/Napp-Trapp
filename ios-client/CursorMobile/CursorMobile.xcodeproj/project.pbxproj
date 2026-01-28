@@ -12,6 +12,8 @@
 		96E84BD82F272EE700B612F2 /* SwiftTermWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E84BD42F272EE700B612F2 /* SwiftTermWrapper.swift */; };
 		96E84BD92F272EE700B612F2 /* TerminalListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E84BD52F272EE700B612F2 /* TerminalListView.swift */; };
 		96E84BDA2F272EE700B612F2 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E84BD62F272EE700B612F2 /* TerminalView.swift */; };
+		A100000000000001 /* XTermWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000000000001 /* XTermWebView.swift */; };
+		A100000000000002 /* xterm.html in Resources */ = {isa = PBXBuildFile; fileRef = A200000000000002 /* xterm.html */; };
 		F000000000000025 /* GitInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000025 /* GitInfo.swift */; };
 		F000000000000026 /* GitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000026 /* GitView.swift */; };
 		F000000000000027 /* GitCommitSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000027 /* GitCommitSheet.swift */; };
@@ -49,6 +51,8 @@
 		96E84BD42F272EE700B612F2 /* SwiftTermWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftTermWrapper.swift; sourceTree = "<group>"; };
 		96E84BD52F272EE700B612F2 /* TerminalListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalListView.swift; sourceTree = "<group>"; };
 		96E84BD62F272EE700B612F2 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
+		A200000000000001 /* XTermWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XTermWebView.swift; sourceTree = "<group>"; };
+		A200000000000002 /* xterm.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = xterm.html; sourceTree = "<group>"; };
 		F100000000000000 /* CursorMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CursorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F100000000000001 /* CursorMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorMobileApp.swift; sourceTree = "<group>"; };
 		F100000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -109,6 +113,7 @@
 				96E84BD42F272EE700B612F2 /* SwiftTermWrapper.swift */,
 				96E84BD52F272EE700B612F2 /* TerminalListView.swift */,
 				96E84BD62F272EE700B612F2 /* TerminalView.swift */,
+				A200000000000001 /* XTermWebView.swift */,
 			);
 			path = Terminals;
 			sourceTree = "<group>";
@@ -130,10 +135,19 @@
 				F300000000000003 /* Models */,
 				F300000000000004 /* Services */,
 				F300000000000005 /* Views */,
+				A300000000000001 /* Resources */,
 				F100000000000003 /* Assets.xcassets */,
 				F100000000000021 /* Info.plist */,
 			);
 			path = CursorMobile;
+			sourceTree = "<group>";
+		};
+		A300000000000001 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A200000000000002 /* xterm.html */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 	F300000000000003 /* Models */ = {
@@ -312,6 +326,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F000000000000003 /* Assets.xcassets in Resources */,
+				A100000000000002 /* xterm.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,6 +355,7 @@
 			96E84BD82F272EE700B612F2 /* SwiftTermWrapper.swift in Sources */,
 			96E84BD92F272EE700B612F2 /* TerminalListView.swift in Sources */,
 			96E84BDA2F272EE700B612F2 /* TerminalView.swift in Sources */,
+			A100000000000001 /* XTermWebView.swift in Sources */,
 			F000000000000017 /* FileViewerSheet.swift in Sources */,
 			F000000000000039 /* FileComponents.swift in Sources */,
 			F000000000000018 /* ConversationsView.swift in Sources */,

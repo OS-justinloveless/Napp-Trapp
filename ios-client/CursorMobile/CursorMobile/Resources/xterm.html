@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Terminal</title>
+    
+    <!-- xterm.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e1e1e;
+        }
+        
+        #terminal-container {
+            width: 100%;
+            height: 100%;
+            padding: 4px;
+        }
+        
+        /* Customize terminal appearance */
+        .xterm {
+            height: 100%;
+        }
+        
+        .xterm-viewport {
+            overflow-y: auto !important;
+        }
+        
+        /* Hide scrollbar on iOS for cleaner look */
+        .xterm-viewport::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .xterm-viewport::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .xterm-viewport::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: light) {
+            html, body {
+                background-color: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal-container"></div>
+    
+    <!-- xterm.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <!-- xterm.js Fit Addon -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <!-- xterm.js WebLinks Addon -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+    
+    <script>
+        // Terminal instance
+        let terminal = null;
+        let fitAddon = null;
+        let isInitialized = false;
+        
+        // Color schemes
+        const darkTheme = {
+            background: '#1e1e1e',
+            foreground: '#d4d4d4',
+            cursor: '#d4d4d4',
+            cursorAccent: '#1e1e1e',
+            selectionBackground: 'rgba(255, 255, 255, 0.3)',
+            black: '#000000',
+            red: '#cd3131',
+            green: '#0dbc79',
+            yellow: '#e5e510',
+            blue: '#2472c8',
+            magenta: '#bc3fbc',
+            cyan: '#11a8cd',
+            white: '#e5e5e5',
+            brightBlack: '#666666',
+            brightRed: '#f14c4c',
+            brightGreen: '#23d18b',
+            brightYellow: '#f5f543',
+            brightBlue: '#3b8eea',
+            brightMagenta: '#d670d6',
+            brightCyan: '#29b8db',
+            brightWhite: '#ffffff'
+        };
+        
+        const lightTheme = {
+            background: '#ffffff',
+            foreground: '#383a42',
+            cursor: '#383a42',
+            cursorAccent: '#ffffff',
+            selectionBackground: 'rgba(0, 0, 0, 0.2)',
+            black: '#383a42',
+            red: '#e45649',
+            green: '#50a14f',
+            yellow: '#c18401',
+            blue: '#4078f2',
+            magenta: '#a626a4',
+            cyan: '#0184bc',
+            white: '#a0a1a7',
+            brightBlack: '#4f525e',
+            brightRed: '#e06c75',
+            brightGreen: '#98c379',
+            brightYellow: '#e5c07b',
+            brightBlue: '#61afef',
+            brightMagenta: '#c678dd',
+            brightCyan: '#56b6c2',
+            brightWhite: '#ffffff'
+        };
+        
+        // Initialize terminal
+        function initTerminal() {
+            if (isInitialized) return;
+            
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            terminal = new Terminal({
+                cursorBlink: true,
+                cursorStyle: 'block',
+                fontSize: 14,
+                fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                lineHeight: 1.2,
+                scrollback: 10000,
+                theme: isDarkMode ? darkTheme : lightTheme,
+                allowTransparency: false,
+                convertEol: true,
+                screenReaderMode: false
+            });
+            
+            // Load addons
+            fitAddon = new FitAddon.FitAddon();
+            terminal.loadAddon(fitAddon);
+            
+            // Web links addon for clickable URLs
+            const webLinksAddon = new WebLinksAddon.WebLinksAddon((event, uri) => {
+                // Send link to Swift to open
+                sendToSwift({ type: 'openLink', url: uri });
+            });
+            terminal.loadAddon(webLinksAddon);
+            
+            // Open terminal in container
+            const container = document.getElementById('terminal-container');
+            terminal.open(container);
+            
+            // Fit to container
+            setTimeout(() => {
+                fitAddon.fit();
+                reportSize();
+            }, 100);
+            
+            // Handle user input
+            terminal.onData((data) => {
+                sendToSwift({ type: 'input', data: data });
+            });
+            
+            // Handle resize
+            terminal.onResize((size) => {
+                sendToSwift({ type: 'resize', cols: size.cols, rows: size.rows });
+            });
+            
+            // Listen for dark mode changes
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                terminal.options.theme = e.matches ? darkTheme : lightTheme;
+            });
+            
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                }
+            });
+            
+            isInitialized = true;
+            
+            // Notify Swift that terminal is ready
+            sendToSwift({ type: 'ready' });
+        }
+        
+        // Send message to Swift
+        function sendToSwift(message) {
+            try {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.terminal) {
+                    window.webkit.messageHandlers.terminal.postMessage(message);
+                }
+            } catch (e) {
+                console.error('Failed to send to Swift:', e);
+            }
+        }
+        
+        // Report terminal size to Swift
+        function reportSize() {
+            if (terminal) {
+                sendToSwift({
+                    type: 'resize',
+                    cols: terminal.cols,
+                    rows: terminal.rows
+                });
+            }
+        }
+        
+        // Terminal Bridge API for Swift to call
+        window.terminalBridge = {
+            // Write data to terminal (base64 encoded to handle binary data)
+            writeData: function(base64Data) {
+                if (!terminal) return;
+                try {
+                    const data = atob(base64Data);
+                    terminal.write(data);
+                } catch (e) {
+                    console.error('Failed to decode data:', e);
+                }
+            },
+            
+            // Write raw string data to terminal
+            writeString: function(data) {
+                if (!terminal) return;
+                terminal.write(data);
+            },
+            
+            // Clear the terminal
+            clear: function() {
+                if (!terminal) return;
+                terminal.clear();
+            },
+            
+            // Reset the terminal
+            reset: function() {
+                if (!terminal) return;
+                terminal.reset();
+            },
+            
+            // Focus the terminal for input
+            focus: function() {
+                if (!terminal) return;
+                terminal.focus();
+            },
+            
+            // Blur the terminal
+            blur: function() {
+                if (!terminal) return;
+                terminal.blur();
+            },
+            
+            // Fit terminal to container and report size
+            fit: function() {
+                if (!fitAddon) return;
+                fitAddon.fit();
+                reportSize();
+            },
+            
+            // Scroll to bottom
+            scrollToBottom: function() {
+                if (!terminal) return;
+                terminal.scrollToBottom();
+            },
+            
+            // Set font size
+            setFontSize: function(size) {
+                if (!terminal) return;
+                terminal.options.fontSize = size;
+                if (fitAddon) {
+                    fitAddon.fit();
+                }
+            },
+            
+            // Get current dimensions
+            getDimensions: function() {
+                if (!terminal) return { cols: 80, rows: 24 };
+                return { cols: terminal.cols, rows: terminal.rows };
+            }
+        };
+        
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTerminal);
+        } else {
+            initTerminal();
+        }
+    </script>
+</body>
+</html>

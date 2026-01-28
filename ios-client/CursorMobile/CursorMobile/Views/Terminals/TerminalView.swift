@@ -12,7 +12,7 @@ struct TerminalView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Terminal output area
+            // Terminal output area using SwiftTerm
             SwiftTermWrapper(
                 terminalId: terminal.id,
                 onInput: { data in

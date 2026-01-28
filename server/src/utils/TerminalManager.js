@@ -294,32 +294,6 @@ export class TerminalManager {
   }
 
   /**
-   * Fast write to Cursor IDE terminal using cached TTY
-   * @param {string} terminalId - Terminal ID
-   * @param {string} projectPath - Project path  
-   * @param {string} data - Data to write
-   * @returns {object} - Result
-   */
-  writeToCursorTerminalFast(terminalId, projectPath, data) {
-    const ttyInfo = this.getCachedTTY(terminalId, projectPath);
-    
-    if (!ttyInfo) {
-      throw new Error(`Terminal ${terminalId} not found or not active`);
-    }
-
-    try {
-      const fd = fs.openSync(ttyInfo.ttyPath, 'w');
-      fs.writeSync(fd, data);
-      fs.closeSync(fd);
-      return { success: true };
-    } catch (error) {
-      // Invalidate cache on write failure
-      this.cursorTerminalTTYCache.delete(`${terminalId}:${projectPath}`);
-      throw new Error(`Failed to write to terminal: ${error.message}`);
-    }
-  }
-
-  /**
    * Generate a terminal name matching Cursor's format: "shell directory"
    * e.g., "node server", "zsh ios-client"
    */

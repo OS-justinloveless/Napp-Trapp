@@ -10,6 +10,13 @@ class TerminalCoordinator: NSObject, TerminalViewDelegate {
     var onInput: ((String) -> Void)?
     var onResize: ((Int, Int) -> Void)?
     
+    // Track last fed data to prevent duplicate feeds
+    var lastFedData: String = ""
+    
+    // Track last reported size to prevent duplicate resize calls
+    var lastReportedCols: Int = 0
+    var lastReportedRows: Int = 0
+    
     override init() {
         super.init()
     }
@@ -25,6 +32,7 @@ class TerminalCoordinator: NSObject, TerminalViewDelegate {
         onInput = nil
         onResize = nil
         terminalView = nil
+        lastFedData = ""
     }
     
     // MARK: - Required TerminalViewDelegate Methods
@@ -116,22 +124,33 @@ struct SwiftTermWrapper: UIViewRepresentable {
         context.coordinator.updateCallbacks(onInput: onInput, onResize: onResize)
         
         // Feed any new data to the terminal as raw bytes
-        if !terminalData.isEmpty {
+        // Use coordinator to track what we've already fed to prevent duplicates
+        let coordinator = context.coordinator
+        if !terminalData.isEmpty && terminalData != coordinator.lastFedData {
+            coordinator.lastFedData = terminalData
+            
             // Convert to bytes - terminal data should be fed as raw bytes
             if let bytes = terminalData.data(using: .utf8) {
                 let byteArray = Array(bytes)
                 terminal.feed(byteArray: byteArray[...]) // Convert to ArraySlice
             }
+            
             // Clear the data after feeding to prevent re-feeding
-            DispatchQueue.main.async {
-                terminalData = ""
+            DispatchQueue.main.async { [weak coordinator] in
+                self.terminalData = ""
+                coordinator?.lastFedData = ""  // Reset so next data can be processed
             }
         }
         
-        // Report terminal size
+        // Report terminal size only if it changed
         let terminalObj = terminal.getTerminal()
-        if terminalObj.cols > 0 && terminalObj.rows > 0 {
-            onResize(terminalObj.cols, terminalObj.rows)
+        let cols = terminalObj.cols
+        let rows = terminalObj.rows
+        if cols > 0 && rows > 0 && 
+           (cols != context.coordinator.lastReportedCols || rows != context.coordinator.lastReportedRows) {
+            context.coordinator.lastReportedCols = cols
+            context.coordinator.lastReportedRows = rows
+            onResize(cols, rows)
         }
     }
     

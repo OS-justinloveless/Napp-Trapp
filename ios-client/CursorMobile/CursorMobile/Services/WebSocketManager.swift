@@ -27,6 +27,8 @@ class WebSocketManager: ObservableObject {
     // Terminal support
     private var terminalOutputHandlers: [String: (String) -> Void] = [:]
     private var terminalErrorHandlers: [String: (String) -> Void] = [:]
+    private var terminalCreatedHandler: ((Terminal) -> Void)?
+    private var terminalClosedHandler: ((String) -> Void)?
     
     func connect(serverUrl: String, token: String) {
         self.serverUrl = serverUrl
@@ -181,10 +183,49 @@ class WebSocketManager: ObservableObject {
                 }
                 
             case "terminalError":
+                let message = json["message"] as? String ?? "Unknown error"
                 if let terminalId = json["terminalId"] as? String,
-                   let message = json["message"] as? String,
                    let handler = terminalErrorHandlers[terminalId] {
                     handler(message)
+                } else {
+                    // General terminal error (e.g., from creation failure)
+                    print("WebSocket: Terminal error - \(message)")
+                }
+                
+            case "terminalCreated":
+                print("WebSocket: Received terminalCreated message")
+                if let terminalDict = json["terminal"] as? [String: Any] {
+                    print("WebSocket: Parsing terminal dict: \(terminalDict)")
+                    let terminal = Terminal(
+                        id: terminalDict["id"] as? String ?? "",
+                        name: terminalDict["name"] as? String ?? "Terminal",
+                        cwd: terminalDict["cwd"] as? String ?? "",
+                        pid: terminalDict["pid"] as? Int ?? 0,
+                        active: terminalDict["active"] as? Bool ?? true,
+                        exitCode: terminalDict["exitCode"] as? Int,
+                        source: terminalDict["source"] as? String ?? "mobile-pty",
+                        lastCommand: terminalDict["lastCommand"] as? String,
+                        activeCommand: terminalDict["activeCommand"] as? String,
+                        shell: terminalDict["shell"] as? String ?? "/bin/zsh",
+                        projectPath: terminalDict["projectPath"] as? String,
+                        createdAt: terminalDict["createdAt"] as? Double ?? Date().timeIntervalSince1970 * 1000,
+                        cols: terminalDict["cols"] as? Int ?? 80,
+                        rows: terminalDict["rows"] as? Int ?? 24,
+                        exitSignal: terminalDict["exitSignal"] as? String,
+                        exitedAt: terminalDict["exitedAt"] as? Double,
+                        isHistory: false
+                    )
+                    print("WebSocket: Calling terminalCreatedHandler for \(terminal.id)")
+                    terminalCreatedHandler?(terminal)
+                    print("WebSocket: Terminal created - \(terminal.id)")
+                } else {
+                    print("WebSocket: Failed to parse terminal dict from terminalCreated")
+                }
+                
+            case "terminalClosed":
+                if let terminalId = json["terminalId"] as? String {
+                    terminalClosedHandler?(terminalId)
+                    print("WebSocket: Terminal closed - \(terminalId)")
                 }
                 
             default:
@@ -232,6 +273,26 @@ class WebSocketManager: ObservableObject {
     
     // MARK: - Terminal Methods
     
+    /// Create a new PTY terminal
+    func createTerminal(cwd: String? = nil, cols: Int = 80, rows: Int = 24, onCreated: @escaping (Terminal) -> Void) {
+        terminalCreatedHandler = onCreated
+        var message: [String: Any] = [
+            "type": "terminalCreate",
+            "cols": cols,
+            "rows": rows
+        ]
+        if let cwd = cwd {
+            message["cwd"] = cwd
+        }
+        send(message)
+        print("WebSocket: Creating new terminal")
+    }
+    
+    /// Set handler for terminal closed events
+    func setTerminalClosedHandler(_ handler: @escaping (String) -> Void) {
+        terminalClosedHandler = handler
+    }
+    
     func attachTerminal(_ terminalId: String, projectPath: String? = nil, onData: @escaping (String) -> Void, onError: @escaping (String) -> Void = { _ in }) {
         terminalOutputHandlers[terminalId] = onData
         terminalErrorHandlers[terminalId] = onError
@@ -265,5 +326,14 @@ class WebSocketManager: ObservableObject {
             "cols": cols,
             "rows": rows
         ])
+    }
+    
+    /// Kill a PTY terminal
+    func killTerminal(_ terminalId: String) {
+        send([
+            "type": "terminalKill",
+            "terminalId": terminalId
+        ])
+        print("WebSocket: Killing terminal \(terminalId)")
     }
 }

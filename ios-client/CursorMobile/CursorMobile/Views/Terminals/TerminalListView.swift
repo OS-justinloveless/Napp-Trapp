@@ -4,11 +4,22 @@ struct TerminalListView: View {
     let project: Project
     
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var webSocketManager: WebSocketManager
     @State private var terminals: [Terminal] = []
     @State private var isLoading = false
     @State private var error: String?
     @State private var selectedTerminal: Terminal?
     @State private var showInfoSheet = false
+    @State private var isCreatingTerminal = false
+    
+    // Separate terminals by source
+    private var ptyTerminals: [Terminal] {
+        terminals.filter { $0.source == "mobile-pty" }
+    }
+    
+    private var cursorTerminals: [Terminal] {
+        terminals.filter { $0.source == "cursor-ide" }
+    }
     
     var body: some View {
         Group {
@@ -38,10 +49,24 @@ struct TerminalListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showInfoSheet = true
-                } label: {
-                    Image(systemName: "info.circle")
+                HStack(spacing: 12) {
+                    Button {
+                        createNewTerminal()
+                    } label: {
+                        if isCreatingTerminal {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "plus")
+                        }
+                    }
+                    .disabled(isCreatingTerminal)
+                    
+                    Button {
+                        showInfoSheet = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
                 }
             }
         }
@@ -59,33 +84,77 @@ struct TerminalListView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
             
-            Text("No Cursor IDE Terminals")
+            Text("No Terminals")
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Open a terminal in Cursor IDE to see it here.\n\nUse ⌃` (Control + backtick) or\nTerminal → New Terminal in Cursor.")
+            Text("Create a new terminal or open one in Cursor IDE.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             
-            Button("Refresh") {
-                Task { await loadTerminals() }
+            HStack(spacing: 16) {
+                Button {
+                    createNewTerminal()
+                } label: {
+                    Label("New Terminal", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isCreatingTerminal)
+                
+                Button("Refresh") {
+                    Task { await loadTerminals() }
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
         }
         .padding()
     }
     
     private var terminalList: some View {
         List {
-            ForEach(terminals) { terminal in
-                Button {
-                    selectedTerminal = terminal
-                } label: {
-                    TerminalRowView(terminal: terminal)
+            // PTY Terminals (Mobile) - with full input support
+            if !ptyTerminals.isEmpty {
+                Section {
+                    ForEach(ptyTerminals) { terminal in
+                        Button {
+                            selectedTerminal = terminal
+                        } label: {
+                            TerminalRowView(terminal: terminal, showSource: true)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                killTerminal(terminal.id)
+                            } label: {
+                                Label("Close", systemImage: "xmark.circle")
+                            }
+                        }
+                    }
+                } header: {
+                    Label("Mobile Terminals", systemImage: "iphone")
+                } footer: {
+                    Text("Full input support. Swipe to close.")
                 }
-                .buttonStyle(.plain)
+            }
+            
+            // Cursor IDE Terminals - read-only output
+            if !cursorTerminals.isEmpty {
+                Section {
+                    ForEach(cursorTerminals) { terminal in
+                        Button {
+                            selectedTerminal = terminal
+                        } label: {
+                            TerminalRowView(terminal: terminal, showSource: true)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Label("Cursor IDE Terminals", systemImage: "desktopcomputer")
+                } footer: {
+                    Text("View-only. Input not available due to macOS restrictions.")
+                }
             }
         }
         .listStyle(.insetGrouped)
@@ -108,23 +177,66 @@ struct TerminalListView: View {
         
         isLoading = false
     }
+    
+    private func createNewTerminal() {
+        isCreatingTerminal = true
+        
+        webSocketManager.createTerminal(cwd: project.path) { terminal in
+            Task { @MainActor in
+                isCreatingTerminal = false
+                // Add to list and select
+                terminals.insert(terminal, at: 0)
+                selectedTerminal = terminal
+            }
+        }
+        
+        // Timeout after 10 seconds
+        Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            await MainActor.run {
+                if isCreatingTerminal {
+                    isCreatingTerminal = false
+                    error = "Failed to create terminal - timeout"
+                }
+            }
+        }
+    }
+    
+    private func killTerminal(_ terminalId: String) {
+        webSocketManager.killTerminal(terminalId)
+        terminals.removeAll { $0.id == terminalId }
+    }
 }
 
 struct TerminalRowView: View {
     let terminal: Terminal
+    var showSource: Bool = false
     
     var body: some View {
         HStack(spacing: 12) {
             // Terminal icon with status color
             Image(systemName: terminal.active ? "terminal.fill" : "terminal")
                 .font(.title2)
-                .foregroundStyle(terminal.active ? .green : .secondary)
+                .foregroundStyle(iconColor)
                 .frame(width: 32)
             
             VStack(alignment: .leading, spacing: 4) {
                 // Terminal name (e.g., "node server", "zsh ios-client")
-                Text(terminal.name)
-                    .font(.headline)
+                HStack {
+                    Text(terminal.name)
+                        .font(.headline)
+                    
+                    if showSource && terminal.source == "mobile-pty" {
+                        Text("PTY")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.2))
+                            .foregroundColor(.blue)
+                            .cornerRadius(4)
+                    }
+                }
                 
                 // Show active command with play indicator
                 if let activeCmd = terminal.activeCommand, !activeCmd.isEmpty {
@@ -147,6 +259,10 @@ struct TerminalRowView: View {
                             .font(.subheadline)
                             .foregroundColor(exitCode == 0 ? .secondary : .red)
                     }
+                } else if terminal.source == "mobile-pty" {
+                    Text("Ready for input")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             
@@ -158,6 +274,13 @@ struct TerminalRowView: View {
                 .frame(width: 10, height: 10)
         }
         .padding(.vertical, 6)
+    }
+    
+    private var iconColor: Color {
+        if terminal.source == "mobile-pty" {
+            return terminal.active ? .blue : .secondary
+        }
+        return terminal.active ? .green : .secondary
     }
 }
 
@@ -174,74 +297,80 @@ struct TerminalInfoSheet: View {
                             .font(.system(size: 50))
                             .foregroundStyle(.blue)
                         
-                        Text("Cursor IDE Terminals")
+                        Text("Terminal Types")
                             .font(.title2)
                             .fontWeight(.bold)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top)
                     
-                    // Explanation
-                    VStack(alignment: .leading, spacing: 16) {
-                        FeatureInfoRow(
-                            icon: "display",
-                            title: "View Terminals",
-                            description: "This app shows terminals that are open in the Cursor IDE on your Mac."
-                        )
-                        
-                        FeatureInfoRow(
-                            icon: "keyboard",
-                            title: "Send Commands",
-                            description: "You can type commands and send input to any active Cursor terminal."
-                        )
-                        
-                        FeatureInfoRow(
-                            icon: "arrow.triangle.2.circlepath",
-                            title: "Real-time Updates",
-                            description: "Pull to refresh to see the latest terminal output and new terminals."
-                        )
-                    }
-                    .padding(.horizontal)
-                    
-                    // How to create
+                    // Mobile PTY Terminals
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Creating New Terminals")
-                            .font(.headline)
+                        HStack {
+                            Image(systemName: "iphone")
+                                .foregroundStyle(.blue)
+                            Text("Mobile Terminals")
+                                .font(.headline)
+                        }
                         
-                        Text("Terminals must be created in the Cursor IDE:")
+                        Text("Full-featured terminals created from the app. These support complete bidirectional input/output.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Text("⌃`")
-                                    .font(.system(.body, design: .monospaced))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color(.systemGray5))
-                                    .cornerRadius(6)
-                                Text("Control + Backtick")
-                                    .font(.subheadline)
-                            }
-                            
-                            HStack(spacing: 8) {
-                                Text("⌘J")
-                                    .font(.system(.body, design: .monospaced))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color(.systemGray5))
-                                    .cornerRadius(6)
-                                Text("Toggle Terminal Panel")
-                                    .font(.subheadline)
-                            }
-                            
-                            Text("Or use: Terminal → New Terminal")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Label("Input", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Label("Output", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Label("Resize", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
                         }
                     }
                     .padding()
                     .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    
+                    // Cursor IDE Terminals
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "desktopcomputer")
+                                .foregroundStyle(.orange)
+                            Text("Cursor IDE Terminals")
+                                .font(.headline)
+                        }
+                        
+                        Text("Terminals from Cursor IDE. Due to macOS security restrictions, these are view-only from the mobile app.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        HStack(spacing: 8) {
+                            Label("Input", systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            Label("Output", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    
+                    // Tip
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tip")
+                            .font(.headline)
+                        Text("For full terminal functionality, tap the + button to create a new Mobile Terminal. These run on your Mac but are fully controllable from your phone.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
                     .cornerRadius(12)
                     .padding(.horizontal)
                     
