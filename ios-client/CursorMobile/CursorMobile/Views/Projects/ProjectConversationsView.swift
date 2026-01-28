@@ -53,6 +53,15 @@ struct ProjectConversationsView: View {
                 loadConversations()
             }
         }
+        .onChange(of: project.id) { _, _ in
+            // Reset state when project changes
+            conversations = []
+            selectedConversation = nil
+            newChatId = nil
+            isLoading = true
+            error = nil
+            loadConversations()
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {

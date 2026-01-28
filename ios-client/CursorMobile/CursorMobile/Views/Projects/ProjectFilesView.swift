@@ -70,6 +70,15 @@ struct ProjectFilesView: View {
                 loadDirectory()
             }
         }
+        .onChange(of: project.id) { _, _ in
+            // Reset state when project changes
+            currentPath = project.path
+            pathHistory = []
+            items = []
+            isLoading = true
+            error = nil
+            loadDirectory()
+        }
         .sheet(item: $selectedFilePath) { path in
             FileViewerSheet(filePath: path)
         }

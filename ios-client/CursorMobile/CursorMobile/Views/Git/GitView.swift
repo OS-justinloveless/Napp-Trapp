@@ -306,6 +306,16 @@ struct GitView: View {
         .task {
             await loadStatus()
         }
+        .onChange(of: project.id) { _, _ in
+            // Reset state when project changes
+            status = nil
+            isLoading = true
+            errorMessage = nil
+            selectedFile = nil
+            selectedUnstagedPaths = []
+            isSelectionMode = false
+            Task { await loadStatus() }
+        }
         .sheet(isPresented: $showCommitSheet) {
             GitCommitSheet(project: project, stagedFiles: status?.staged ?? []) {
                 Task { await loadStatus() }

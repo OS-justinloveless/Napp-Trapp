@@ -76,6 +76,14 @@ struct TerminalListView: View {
         .refreshable {
             await loadTerminals()
         }
+        .onChange(of: project.id) { _, _ in
+            // Reset state when project changes
+            terminals = []
+            selectedTerminal = nil
+            isLoading = true
+            error = nil
+            Task { await loadTerminals() }
+        }
     }
     
     private var noTerminalsView: some View {
