@@ -8,6 +8,10 @@ struct MainTabView: View {
     @State private var selectedProject: Project?
     @State private var isDrawerOpen = false
     
+    // New chat state
+    @State private var isCreatingChat = false
+    @State private var newChatId: String?
+    
     // Drawer width
     private let drawerWidth: CGFloat = 280
     
@@ -99,78 +103,114 @@ struct MainTabView: View {
     }
     
     private func projectTabView(project: Project) -> some View {
-        TabView(selection: $selectedTab) {
-            // Files Tab
-            NavigationStack {
-                ProjectFilesView(project: project)
-                    .navigationTitle("Files")
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            drawerToggleButton
-                        }
-                    }
+        ZStack(alignment: .bottom) {
+            // Tab content
+            Group {
+                switch selectedTab {
+                case 0:
+                    filesTab(project: project)
+                case 1:
+                    terminalsTab(project: project)
+                case 2:
+                    gitTab(project: project)
+                case 3:
+                    chatTab(project: project)
+                default:
+                    filesTab(project: project)
+                }
             }
-            .tabItem {
-                Label("Files", systemImage: "folder.fill")
-            }
-            .tag(0)
             
-            // Terminals Tab
-            NavigationStack {
-                TerminalListView(project: project)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            drawerToggleButton
-                        }
+            // Floating tab bar and FAB overlay
+            HStack(alignment: .bottom, spacing: 12) {
+                FloatingTabBar(selectedTab: $selectedTab)
+                FloatingActionButton {
+                    createNewChat(for: project)
+                }
+                .opacity(isCreatingChat ? 0.5 : 1.0)
+                .disabled(isCreatingChat)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+    }
+    
+    // MARK: - Tab Views
+    
+    private func filesTab(project: Project) -> some View {
+        NavigationStack {
+            ProjectFilesView(project: project)
+                .navigationTitle("Files")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
                     }
-            }
-            .tabItem {
-                Label("Terminals", systemImage: "terminal.fill")
-            }
-            .tag(1)
-            
-            // Git Tab
-            NavigationStack {
-                GitView(project: project)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            drawerToggleButton
-                        }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    // Space for floating tab bar
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func terminalsTab(project: Project) -> some View {
+        NavigationStack {
+            TerminalListView(project: project)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
                     }
-            }
-            .tabItem {
-                Label("Git", systemImage: "arrow.triangle.branch")
-            }
-            .tag(2)
-            
-            // Chat Tab
-            NavigationStack {
-                ProjectConversationsView(project: project)
-                    .navigationTitle("Chat")
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            drawerToggleButton
-                        }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func gitTab(project: Project) -> some View {
+        NavigationStack {
+            GitView(project: project)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
                     }
-            }
-            .tabItem {
-                Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
-            }
-            .tag(3)
-            
-            // Settings Tab
-            NavigationStack {
-                SettingsView()
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            drawerToggleButton
-                        }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func chatTab(project: Project) -> some View {
+        NavigationStack {
+            ProjectConversationsView(project: project)
+                .navigationTitle("Chat")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
                     }
-            }
-            .tabItem {
-                Label("Settings", systemImage: "gear")
-            }
-            .tag(4)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+                .navigationDestination(item: $newChatId) { chatId in
+                    ConversationDetailView(
+                        conversation: Conversation(
+                            id: chatId,
+                            type: "chat",
+                            title: "New Chat",
+                            timestamp: Date().timeIntervalSince1970 * 1000,
+                            messageCount: 0,
+                            workspaceId: project.id,
+                            source: "mobile",
+                            projectName: project.name,
+                            workspaceFolder: project.path,
+                            isProjectChat: true,
+                            isReadOnly: false,
+                            readOnlyReason: nil,
+                            canFork: false
+                        )
+                    )
+                }
         }
     }
     
@@ -217,14 +257,220 @@ struct MainTabView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     drawerToggleButton
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        Image(systemName: "gear")
-                    }
+            }
+        }
+    }
+    
+    private var drawerToggleButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isDrawerOpen.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "sidebar.left")
+                if let project = selectedProject {
+                    Text(project.name)
+                        .font(.subheadline)
+                        .lineLimit(1)
                 }
             }
+        }
+    }
+    
+    // MARK: - New Chat
+    
+    private func createNewChat(for project: Project) {
+        guard !isCreatingChat else { return }
+        isCreatingChat = true
+        
+        Task {
+            guard let api = authManager.createAPIService() else {
+                await MainActor.run {
+                    isCreatingChat = false
+                }
+                return
+            }
+            
+            do {
+                let chatId = try await api.createConversation(workspaceId: project.id)
+                await MainActor.run {
+                    isCreatingChat = false
+                    // Switch to chat tab and navigate to the new conversation
+                    selectedTab = 3
+                    newChatId = chatId
+                }
+            } catch {
+                await MainActor.run {
+                    isCreatingChat = false
+                    // Could show an error alert here if needed
+                    print("Failed to create chat: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Previews
+
+#Preview("No Project Selected") {
+    MainTabView()
+        .environmentObject(AuthManager())
+        .environmentObject(WebSocketManager())
+}
+
+#Preview("With Project Selected") {
+    MainTabViewPreview()
+        .environmentObject(AuthManager())
+        .environmentObject(WebSocketManager())
+}
+
+/// Preview wrapper that shows MainTabView with a project already selected
+private struct MainTabViewPreview: View {
+    @State private var selectedProject: Project? = Project(
+        id: "preview-project",
+        name: "CursorMobile",
+        path: "/Users/developer/Projects/CursorMobile",
+        lastOpened: Date()
+    )
+    
+    var body: some View {
+        MainTabViewWithProject(selectedProject: $selectedProject)
+    }
+}
+
+/// Internal view for preview that accepts a binding for selectedProject
+private struct MainTabViewWithProject: View {
+    @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var webSocketManager: WebSocketManager
+    
+    @Binding var selectedProject: Project?
+    @State private var selectedTab = 0
+    @State private var isDrawerOpen = false
+    
+    private let drawerWidth: CGFloat = 280
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                VStack(spacing: 0) {
+                    if let project = selectedProject {
+                        projectTabView(project: project)
+                    }
+                }
+                .frame(width: geometry.size.width)
+                .offset(x: isDrawerOpen ? drawerWidth : 0)
+                .disabled(isDrawerOpen)
+                
+                if isDrawerOpen {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .offset(x: drawerWidth)
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                isDrawerOpen = false
+                            }
+                        }
+                }
+                
+                HStack(spacing: 0) {
+                    ProjectSelectionDrawer(
+                        selectedProject: $selectedProject,
+                        isOpen: $isDrawerOpen
+                    )
+                    .frame(width: drawerWidth)
+                    .background(Color(.systemGroupedBackground))
+                    
+                    Spacer()
+                }
+                .offset(x: isDrawerOpen ? 0 : -drawerWidth)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isDrawerOpen)
+    }
+    
+    private func projectTabView(project: Project) -> some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                switch selectedTab {
+                case 0:
+                    filesTab(project: project)
+                case 1:
+                    terminalsTab(project: project)
+                case 2:
+                    gitTab(project: project)
+                case 3:
+                    chatTab(project: project)
+                default:
+                    filesTab(project: project)
+                }
+            }
+            
+            HStack(alignment: .bottom, spacing: 12) {
+                FloatingTabBar(selectedTab: $selectedTab)
+                FloatingActionButton { }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 2)
+        }
+    }
+    
+    private func filesTab(project: Project) -> some View {
+        NavigationStack {
+            // Preview with dummy file data
+            PreviewFilesView(project: project)
+                .navigationTitle("Files")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func terminalsTab(project: Project) -> some View {
+        NavigationStack {
+            TerminalListView(project: project)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func gitTab(project: Project) -> some View {
+        NavigationStack {
+            GitView(project: project)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
+        }
+    }
+    
+    private func chatTab(project: Project) -> some View {
+        NavigationStack {
+            ProjectConversationsView(project: project)
+                .navigationTitle("Chat")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        drawerToggleButton
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 80)
+                }
         }
     }
     
@@ -246,8 +492,67 @@ struct MainTabView: View {
     }
 }
 
-#Preview {
-    MainTabView()
-        .environmentObject(AuthManager())
-        .environmentObject(WebSocketManager())
+/// Preview-only files view with dummy data
+private struct PreviewFilesView: View {
+    let project: Project
+    
+    private let dummyFiles: [FileItem] = [
+        FileItem(name: "Sources", path: "/Sources", isDirectory: true, size: 0, modified: Date()),
+        FileItem(name: "Tests", path: "/Tests", isDirectory: true, size: 0, modified: Date()),
+        FileItem(name: "Resources", path: "/Resources", isDirectory: true, size: 0, modified: Date()),
+        FileItem(name: "Package.swift", path: "/Package.swift", isDirectory: false, size: 1245, modified: Date()),
+        FileItem(name: "README.md", path: "/README.md", isDirectory: false, size: 3420, modified: Date()),
+        FileItem(name: ".gitignore", path: "/.gitignore", isDirectory: false, size: 156, modified: Date()),
+        FileItem(name: "ContentView.swift", path: "/Sources/ContentView.swift", isDirectory: false, size: 2048, modified: Date()),
+        FileItem(name: "App.swift", path: "/Sources/App.swift", isDirectory: false, size: 512, modified: Date()),
+        FileItem(name: "Models", path: "/Sources/Models", isDirectory: true, size: 0, modified: Date()),
+        FileItem(name: "Views", path: "/Sources/Views", isDirectory: true, size: 0, modified: Date()),
+        FileItem(name: "config.json", path: "/config.json", isDirectory: false, size: 890, modified: Date()),
+        FileItem(name: "Makefile", path: "/Makefile", isDirectory: false, size: 420, modified: Date()),
+    ]
+    
+    var body: some View {
+        List {
+            Section {
+                ForEach(dummyFiles) { item in
+                    PreviewFileItemRow(item: item)
+                }
+            }
+        }
+    }
+}
+
+/// File item row for preview (uses different name to avoid conflict with FileComponents.FileItemRow)
+private struct PreviewFileItemRow: View {
+    let item: FileItem
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: item.icon)
+                .font(.title2)
+                .foregroundColor(item.isDirectory ? .accentColor : .secondary)
+                .frame(width: 28)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(.body)
+                    .lineLimit(1)
+                
+                if !item.isDirectory {
+                    Text(item.formattedSize)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            if item.isDirectory {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
 }

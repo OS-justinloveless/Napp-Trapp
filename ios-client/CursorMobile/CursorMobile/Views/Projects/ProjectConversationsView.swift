@@ -12,6 +12,11 @@ struct ProjectConversationsView: View {
     @State private var isCreatingChat = false
     @State private var newChatId: String?
     
+    /// Conversations filtered to exclude empty ones (0 messages)
+    private var filteredConversations: [Conversation] {
+        conversations.filter { $0.messageCount > 0 }
+    }
+    
     var body: some View {
         Group {
             if isLoading {
@@ -20,7 +25,7 @@ struct ProjectConversationsView: View {
                 ErrorView(message: error) {
                     loadConversations()
                 }
-            } else if conversations.isEmpty {
+            } else if filteredConversations.isEmpty {
                 emptyStateWithNewChat
             } else {
                 conversationsList
@@ -121,7 +126,7 @@ struct ProjectConversationsView: View {
     
     private var conversationsList: some View {
         List {
-            ForEach(conversations) { conversation in
+            ForEach(filteredConversations) { conversation in
                 ConversationRow(conversation: conversation) {
                     selectedConversation = conversation
                 }

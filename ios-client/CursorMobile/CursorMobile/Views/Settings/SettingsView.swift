@@ -1,5 +1,43 @@
 import SwiftUI
 
+// MARK: - App Icon Model
+
+enum AppIconOption: String, CaseIterable, Identifiable {
+    case forest = "AppIconForest"
+    case desert = "AppIconDesert"
+    case mono = "AppIconMono"
+    case night = "AppIconNight"
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .forest: return "Forest"
+        case .desert: return "Desert"
+        case .mono: return "Mono"
+        case .night: return "Night"
+        }
+    }
+    
+    var iconName: String? {
+        switch self {
+        case .forest: return "AppIconForest"
+        case .desert: return "AppIconDesert"
+        case .mono: return "AppIconMono"
+        case .night: return "AppIconNight"
+        }
+    }
+    
+    var previewImageName: String {
+        switch self {
+        case .forest: return "IconPreviewForest"
+        case .desert: return "IconPreviewDesert"
+        case .mono: return "IconPreviewMono"
+        case .night: return "IconPreviewNight"
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var webSocketManager: WebSocketManager
@@ -10,6 +48,10 @@ struct SettingsView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showLogoutConfirmation = false
+    
+    // App Icon states
+    @State private var currentAppIcon: AppIconOption = .forest
+    @State private var showIconChangeAlert = false
     
     // iOS Build states
     @State private var isBuilding = false
@@ -201,6 +243,30 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Editor")
+            }
+            
+            // App Icon Section
+            Section {
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 16) {
+                    ForEach(AppIconOption.allCases) { option in
+                        AppIconButton(
+                            option: option,
+                            isSelected: currentAppIcon == option,
+                            onSelect: {
+                                changeAppIcon(to: option)
+                            }
+                        )
+                    }
+                }
+                .padding(.vertical, 8)
+            } header: {
+                Text("App Icon")
+            } footer: {
+                Text("Choose your preferred app icon. The icon will change on your home screen.")
             }
             
             // Cache Section
@@ -414,6 +480,34 @@ struct SettingsView: View {
         }
         .onAppear {
             loadData()
+            detectCurrentAppIcon()
+        }
+        .alert("Icon Changed", isPresented: $showIconChangeAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your app icon has been updated!")
+        }
+    }
+    
+    private func detectCurrentAppIcon() {
+        if let iconName = UIApplication.shared.alternateIconName {
+            currentAppIcon = AppIconOption.allCases.first { $0.iconName == iconName } ?? .forest
+        } else {
+            currentAppIcon = .forest
+        }
+    }
+    
+    private func changeAppIcon(to option: AppIconOption) {
+        guard UIApplication.shared.supportsAlternateIcons else { return }
+        
+        UIApplication.shared.setAlternateIconName(option.iconName) { error in
+            if let error = error {
+                print("Error changing app icon: \(error.localizedDescription)")
+            } else {
+                DispatchQueue.main.async {
+                    currentAppIcon = option
+                }
+            }
         }
     }
     
@@ -552,6 +646,52 @@ struct SettingsView: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - App Icon Button Component
+
+private struct AppIconButton: View {
+    let option: AppIconOption
+    let isSelected: Bool
+    let onSelect: () -> Void
+    
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 8) {
+                ZStack {
+                    // Actual icon image from asset catalog
+                    Image(option.previewImageName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    
+                    // Selection indicator
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.accentColor, lineWidth: 3)
+                            .frame(width: 64, height: 64)
+                    }
+                }
+                
+                Text(option.displayName)
+                    .font(.caption2)
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                    .lineLimit(1)
+                
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.accentColor)
+                } else {
+                    Image(systemName: "circle")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

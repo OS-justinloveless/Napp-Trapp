@@ -53,6 +53,15 @@
 		C000000000000003 /* SyntaxSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C100000000000003 /* SyntaxSettingsView.swift */; };
 		C000000000000010 /* Grammars in Resources */ = {isa = PBXBuildFile; fileRef = C100000000000010 /* Grammars */; };
 		C000000000000011 /* Themes in Resources */ = {isa = PBXBuildFile; fileRef = C100000000000011 /* Themes */; };
+		D000000000000001 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000001 /* FloatingTabBar.swift */; };
+		E000000000000020 /* AppIconForest@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000020 /* AppIconForest@2x.png */; };
+		E000000000000021 /* AppIconForest@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000021 /* AppIconForest@3x.png */; };
+		E000000000000022 /* AppIconDesert@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000022 /* AppIconDesert@2x.png */; };
+		E000000000000023 /* AppIconDesert@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000023 /* AppIconDesert@3x.png */; };
+		E000000000000024 /* AppIconMono@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000024 /* AppIconMono@2x.png */; };
+		E000000000000025 /* AppIconMono@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000025 /* AppIconMono@3x.png */; };
+		E000000000000026 /* AppIconNight@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000026 /* AppIconNight@2x.png */; };
+		E000000000000027 /* AppIconNight@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000027 /* AppIconNight@3x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -103,6 +112,15 @@
 		C100000000000003 /* SyntaxSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxSettingsView.swift; sourceTree = "<group>"; };
 		C100000000000010 /* Grammars */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Grammars; sourceTree = "<group>"; };
 		C100000000000011 /* Themes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Themes; sourceTree = "<group>"; };
+		D100000000000001 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
+		E100000000000020 /* AppIconForest@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconForest@2x.png"; sourceTree = "<group>"; };
+		E100000000000021 /* AppIconForest@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconForest@3x.png"; sourceTree = "<group>"; };
+		E100000000000022 /* AppIconDesert@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconDesert@2x.png"; sourceTree = "<group>"; };
+		E100000000000023 /* AppIconDesert@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconDesert@3x.png"; sourceTree = "<group>"; };
+		E100000000000024 /* AppIconMono@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconMono@2x.png"; sourceTree = "<group>"; };
+		E100000000000025 /* AppIconMono@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconMono@3x.png"; sourceTree = "<group>"; };
+		E100000000000026 /* AppIconNight@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconNight@2x.png"; sourceTree = "<group>"; };
+		E100000000000027 /* AppIconNight@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconNight@3x.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +174,14 @@
 				A300000000000001 /* Resources */,
 				F100000000000003 /* Assets.xcassets */,
 				F100000000000021 /* Info.plist */,
+				E100000000000020 /* AppIconForest@2x.png */,
+				E100000000000021 /* AppIconForest@3x.png */,
+				E100000000000022 /* AppIconDesert@2x.png */,
+				E100000000000023 /* AppIconDesert@3x.png */,
+				E100000000000024 /* AppIconMono@2x.png */,
+				E100000000000025 /* AppIconMono@3x.png */,
+				E100000000000026 /* AppIconNight@2x.png */,
+				E100000000000027 /* AppIconNight@3x.png */,
 			);
 			path = CursorMobile;
 			sourceTree = "<group>";
@@ -276,10 +302,11 @@
 		F300000000000011 /* Components */ = {
 			isa = PBXGroup;
 			children = (
-				F100000000000020 /* CommonViews.swift */,
-				F100000000000038 /* ImagePicker.swift */,
-			);
-			path = Components;
+			F100000000000020 /* CommonViews.swift */,
+			F100000000000038 /* ImagePicker.swift */,
+			D100000000000001 /* FloatingTabBar.swift */,
+		);
+		path = Components;
 			sourceTree = "<group>";
 		};
 		F300000000000099 /* Products */ = {
@@ -356,6 +383,14 @@
 				A100000000000002 /* xterm.html in Resources */,
 				C000000000000010 /* Grammars in Resources */,
 				C000000000000011 /* Themes in Resources */,
+				E000000000000020 /* AppIconForest@2x.png in Resources */,
+				E000000000000021 /* AppIconForest@3x.png in Resources */,
+				E000000000000022 /* AppIconDesert@2x.png in Resources */,
+				E000000000000023 /* AppIconDesert@3x.png in Resources */,
+				E000000000000024 /* AppIconMono@2x.png in Resources */,
+				E000000000000025 /* AppIconMono@3x.png in Resources */,
+				E000000000000026 /* AppIconNight@2x.png in Resources */,
+				E000000000000027 /* AppIconNight@3x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -406,6 +441,7 @@
 			C000000000000001 /* SyntaxHighlightManager.swift in Sources */,
 			C000000000000002 /* HighlightedCodeView.swift in Sources */,
 			C000000000000003 /* SyntaxSettingsView.swift in Sources */,
+			D000000000000001 /* FloatingTabBar.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -542,7 +578,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CursorMobile/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Cursor Mobile";
+				INFOPLIST_KEY_CFBundleDisplayName = "Napp Trapp";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for easy connection";
@@ -575,7 +611,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CursorMobile/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Cursor Mobile";
+				INFOPLIST_KEY_CFBundleDisplayName = "Napp Trapp";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to scan QR codes for easy connection";

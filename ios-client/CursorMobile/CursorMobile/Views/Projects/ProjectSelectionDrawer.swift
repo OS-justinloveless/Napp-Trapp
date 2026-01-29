@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProjectSelectionDrawer: View {
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var webSocketManager: WebSocketManager
     @Binding var selectedProject: Project?
     @Binding var isOpen: Bool
     
@@ -9,6 +10,8 @@ struct ProjectSelectionDrawer: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var openingProject: String?
+    @State private var showSettings = false
+    @State private var showLogoutConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -73,6 +76,9 @@ struct ProjectSelectionDrawer: View {
             } else {
                 projectsList
             }
+            
+            // Fixed bottom section with Settings and Sign Out
+            drawerBottomButtons
         }
         .frame(maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
@@ -80,6 +86,69 @@ struct ProjectSelectionDrawer: View {
             if projects.isEmpty {
                 loadProjects()
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                showSettings = false
+                            }
+                        }
+                    }
+            }
+        }
+        .confirmationDialog(
+            "Disconnect from server?",
+            isPresented: $showLogoutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) {
+                webSocketManager.disconnect()
+                authManager.logout()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You will need to scan the QR code again to reconnect.")
+        }
+    }
+    
+    private var drawerBottomButtons: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 16) {
+                // Sign Out button
+                Button {
+                    showLogoutConfirmation = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.body)
+                        Text("Disconnect")
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.red)
+                }
+                
+                Spacer()
+                
+                // Settings button
+                Button {
+                    showSettings = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "gear")
+                            .font(.body)
+                        Text("Settings")
+                            .font(.subheadline)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(.systemBackground))
         }
     }
     
@@ -211,4 +280,5 @@ struct ProjectDrawerRow: View {
         isOpen: .constant(true)
     )
     .environmentObject(AuthManager())
+    .environmentObject(WebSocketManager())
 }
