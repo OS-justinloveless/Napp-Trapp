@@ -53,13 +53,21 @@ struct ProjectConversationsView: View {
     }
     
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            // Search bar
+            searchBar
+            
+            // Content
             if isLoading {
+                Spacer()
                 ProgressView("Loading conversations...")
+                Spacer()
             } else if let error = error {
+                Spacer()
                 ErrorView(message: error) {
                     loadConversations()
                 }
+                Spacer()
             } else if totalNonEmptyCount == 0 {
                 // No conversations at all
                 emptyStateWithNewChat
@@ -70,7 +78,6 @@ struct ProjectConversationsView: View {
                 conversationsList
             }
         }
-        .searchable(text: $searchText, prompt: "Search conversations...")
         .navigationDestination(item: $selectedConversation) { conversation in
             ConversationDetailView(conversation: conversation)
         }
@@ -109,16 +116,6 @@ struct ProjectConversationsView: View {
             loadConversations()
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Menu {
-                    Toggle(isOn: $hideReadOnly) {
-                        Label("Hide Read-Only", systemImage: hideReadOnly ? "eye.slash.fill" : "eye.slash")
-                    }
-                } label: {
-                    Image(systemName: hideReadOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .foregroundColor(hideReadOnly ? .accentColor : .primary)
-                }
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
                     Button {
@@ -143,8 +140,50 @@ struct ProjectConversationsView: View {
         }
     }
     
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            // Filter button
+            Menu {
+                Toggle(isOn: $hideReadOnly) {
+                    Label("Hide Read-Only", systemImage: hideReadOnly ? "eye.slash.fill" : "eye.slash")
+                }
+            } label: {
+                Image(systemName: hideReadOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(hideReadOnly ? .accentColor : .secondary)
+                    .frame(width: 36, height: 36)
+            }
+            
+            // Search field
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                
+                TextField("Search conversations...", text: $searchText)
+                    .textFieldStyle(.plain)
+                
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(10)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+    
     private var filteredEmptyState: some View {
         VStack(spacing: 16) {
+            Spacer()
+            
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary)
@@ -169,6 +208,8 @@ struct ProjectConversationsView: View {
                         .font(.subheadline)
                 }
             }
+            
+            Spacer()
         }
         .padding()
     }
@@ -234,12 +275,6 @@ struct ProjectConversationsView: View {
                     selectedConversation = conversation
                 }
             }
-            
-            // Bottom padding for floating tab bar
-            Color.clear
-                .frame(height: 80)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
         }
         .refreshable {
             await refreshConversations()
