@@ -402,14 +402,20 @@ export class CursorChatReader {
       const mobileMessages = await this.mobileChatStore.getMessages(chatId);
       
       for (const msg of mobileMessages) {
+        // Process message content to extract tool calls and clean text
+        const { text, toolCalls } = this.processMessageContent(msg);
+        
+        // Merge with any existing toolCalls from the stored message
+        const finalToolCalls = toolCalls || msg.toolCalls || null;
+        
         messages.push({
           id: msg.id,
           type: msg.type === 'user' ? 'user' : 'assistant',
-          text: msg.text || '',
+          text: text,
           timestamp: msg.timestamp || Date.now(),
           modelType: null,
-          codeBlocks: this.extractCodeBlocksFromText(msg.text),
-          toolCalls: msg.toolCalls || null,
+          codeBlocks: this.extractCodeBlocksFromText(text),
+          toolCalls: finalToolCalls,
           source: 'mobile'
         });
       }
@@ -510,14 +516,17 @@ export class CursorChatReader {
           const bubble = JSON.parse(row.value);
           if (!bubble || typeof bubble !== 'object') continue;
           
+          // Process message content to extract tool calls and clean text
+          const { text, toolCalls } = this.processMessageContent(bubble);
+          
           messages.push({
             id: row.key,
             type: bubble.type === 'user' || bubble.type === 1 ? 'user' : 'assistant',
-            text: bubble.text || '',
+            text: text,
             timestamp: bubble.timestamp || Date.now(),
             modelType: bubble.modelType || null,
             codeBlocks: this.extractCodeBlocks(bubble),
-            toolCalls: this.extractToolCalls(bubble),
+            toolCalls: toolCalls,
             selections: bubble.selections || [],
             relevantFiles: bubble.relevantFiles || []
           });
@@ -563,14 +572,17 @@ export class CursorChatReader {
           
           if (tab && tab.bubbles) {
             for (const bubble of tab.bubbles) {
+              // Process message content to extract tool calls and clean text
+              const { text, toolCalls } = this.processMessageContent(bubble);
+              
               messages.push({
                 id: `${chatId}-${messages.length}`,
                 type: bubble.type === 'user' ? 'user' : 'assistant',
-                text: bubble.text || '',
+                text: text,
                 timestamp: bubble.timestamp || Date.now(),
                 modelType: bubble.modelType || null,
                 codeBlocks: this.extractCodeBlocks(bubble),
-                toolCalls: this.extractToolCalls(bubble)
+                toolCalls: toolCalls
               });
             }
           }
@@ -630,14 +642,17 @@ export class CursorChatReader {
       
       if (composerData && composerData.conversation) {
         for (const msg of composerData.conversation) {
+          // Process message content to extract tool calls and clean text
+          const { text, toolCalls } = this.processMessageContent(msg);
+          
           messages.push({
             id: msg.bubbleId || `${composerId}-${messages.length}`,
             type: msg.type === 1 ? 'user' : 'assistant',
-            text: msg.text || msg.richText || '',
+            text: text,
             timestamp: msg.timestamp || Date.now(),
             context: msg.context || null,
             codeBlocks: this.extractCodeBlocks(msg),
-            toolCalls: this.extractToolCalls(msg)
+            toolCalls: toolCalls
           });
         }
       }
@@ -680,13 +695,16 @@ export class CursorChatReader {
           const bubble = JSON.parse(row.value);
           if (!bubble || typeof bubble !== 'object') continue;
           
+          // Process message content to extract tool calls and clean text
+          const { text, toolCalls } = this.processMessageContent(bubble);
+          
           messages.push({
             id: row.key,
             type: bubble.type === 1 || bubble.type === 'user' ? 'user' : 'assistant',
-            text: bubble.text || bubble.richText || '',
+            text: text,
             timestamp: bubble.timestamp || Date.now(),
             codeBlocks: this.extractCodeBlocks(bubble),
-            toolCalls: this.extractToolCalls(bubble)
+            toolCalls: toolCalls
           });
         } catch (e) {
           // Skip invalid entries
@@ -800,7 +818,242 @@ export class CursorChatReader {
       }
     }
     
+    // Parse tool calls embedded as JSON in text
+    if (bubble.text) {
+      const embeddedToolCalls = this.parseToolCallsFromText(bubble.text);
+      toolCalls.push(...embeddedToolCalls);
+    }
+    
     return toolCalls.length > 0 ? toolCalls : null;
+  }
+
+  /**
+   * Parse tool calls embedded as JSON in message text
+   * Handles formats like: {"type":"tool_call","subtype":"completed","call_id":"...","tool_call":{...}}
+   */
+  parseToolCallsFromText(text) {
+    const toolCalls = [];
+    if (!text) return toolCalls;
+
+    // Find all JSON objects in the text using balanced brace matching
+    const jsonObjects = this.findJsonObjects(text);
+    
+    for (const jsonStr of jsonObjects) {
+      try {
+        const obj = JSON.parse(jsonStr);
+        
+        // Check if this is a tool_call type object
+        if (obj.type === 'tool_call' || obj.tool_call) {
+          const toolCall = this.parseToolCallObject(obj, toolCalls.length);
+          if (toolCall) {
+            toolCalls.push(toolCall);
+          }
+        }
+        // Check for tool_result type
+        else if (obj.type === 'tool_result') {
+          // Tool results are handled separately - we might want to merge with existing tool calls
+          const toolId = obj.tool_use_id || obj.call_id;
+          const existingTool = toolCalls.find(t => t.id === toolId);
+          if (existingTool) {
+            existingTool.result = obj.content || obj.result;
+            existingTool.status = obj.is_error ? 'error' : 'complete';
+          }
+        }
+      } catch (e) {
+        // Not valid JSON, skip
+      }
+    }
+
+    return toolCalls;
+  }
+
+  /**
+   * Find all JSON objects in text using balanced brace matching
+   * This handles deeply nested JSON structures
+   */
+  findJsonObjects(text) {
+    const objects = [];
+    let i = 0;
+    
+    while (i < text.length) {
+      if (text[i] === '{') {
+        const start = i;
+        let depth = 0;
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let j = i; j < text.length; j++) {
+          const char = text[j];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\' && inString) {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') {
+              depth++;
+            } else if (char === '}') {
+              depth--;
+              if (depth === 0) {
+                const jsonStr = text.substring(start, j + 1);
+                objects.push(jsonStr);
+                i = j;
+                break;
+              }
+            }
+          }
+        }
+      }
+      i++;
+    }
+    
+    return objects;
+  }
+
+  /**
+   * Parse a single tool call object into our standard format
+   */
+  parseToolCallObject(obj, index) {
+    // Handle {"type":"tool_call","subtype":"completed","call_id":"...","tool_call":{...}} format
+    if (obj.tool_call) {
+      const toolCallData = obj.tool_call;
+      // The tool_call object has keys like "readToolCall", "writeToolCall", etc.
+      const toolType = Object.keys(toolCallData)[0];
+      if (toolType) {
+        const toolData = toolCallData[toolType];
+        // Extract tool name from the key (e.g., "readToolCall" -> "Read")
+        let name = toolType.replace(/ToolCall$/i, '');
+        name = name.charAt(0).toUpperCase() + name.slice(1);
+        
+        // Extract result - handle nested formats like {success: {content: "..."}}
+        let result = this.extractResult(obj.result) || this.extractResult(toolData?.result);
+        
+        return {
+          id: obj.call_id || `embedded-tool-${index}`,
+          name: name,
+          input: toolData?.args || toolData || {},
+          status: obj.subtype === 'completed' ? 'complete' : (obj.subtype === 'error' ? 'error' : 'running'),
+          result: result
+        };
+      }
+    }
+    
+    // Handle direct tool call format
+    if (obj.name || obj.function) {
+      return {
+        id: obj.id || obj.call_id || `embedded-tool-${index}`,
+        name: obj.name || obj.function?.name || 'Unknown',
+        input: obj.input || obj.args || obj.function?.arguments || {},
+        status: obj.status || obj.subtype || 'complete',
+        result: this.extractResult(obj.result) || obj.output || null
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract result content from various formats
+   * Handles: string, {success: {content: "..."}}, {content: "..."}, etc.
+   */
+  extractResult(result) {
+    if (!result) return null;
+    
+    // Already a string
+    if (typeof result === 'string') return result;
+    
+    // {success: {content: "..."}} format
+    if (result.success && result.success.content) {
+      return result.success.content;
+    }
+    
+    // {content: "..."} format
+    if (result.content) {
+      return typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
+    }
+    
+    // {error: "..."} or {error: {message: "..."}} format
+    if (result.error) {
+      if (typeof result.error === 'string') return result.error;
+      if (result.error.message) return result.error.message;
+      return JSON.stringify(result.error);
+    }
+    
+    // Object - stringify it
+    if (typeof result === 'object') {
+      return JSON.stringify(result);
+    }
+    
+    return String(result);
+  }
+
+  /**
+   * Clean message text by removing embedded tool call JSON
+   * Returns the text without the JSON blobs
+   */
+  cleanTextFromToolCalls(text) {
+    if (!text) return text;
+
+    let cleaned = text;
+
+    // Find all JSON objects using balanced brace matching
+    const jsonObjects = this.findJsonObjects(text);
+    const toRemove = [];
+
+    for (const jsonStr of jsonObjects) {
+      try {
+        const obj = JSON.parse(jsonStr);
+        
+        // Check if this is a tool-related JSON object
+        if (obj.type === 'tool_call' || obj.type === 'tool_result' || 
+            obj.tool_call || obj.tool_use_id || obj.call_id ||
+            (obj.type && obj.subtype && (obj.subtype === 'completed' || obj.subtype === 'running' || obj.subtype === 'error'))) {
+          toRemove.push(jsonStr);
+        }
+      } catch (e) {
+        // Not valid JSON, keep it
+      }
+    }
+
+    // Remove the JSON strings from the text
+    for (const jsonStr of toRemove) {
+      cleaned = cleaned.replace(jsonStr, '');
+    }
+
+    // Clean up extra whitespace and newlines left behind
+    cleaned = cleaned
+      .replace(/\n{3,}/g, '\n\n')  // Replace 3+ newlines with 2
+      .replace(/^\s+|\s+$/g, '')   // Trim start and end
+      .replace(/  +/g, ' ');       // Replace multiple spaces with single space (but preserve newlines)
+    
+    return cleaned;
+  }
+
+  /**
+   * Process a message to extract tool calls and clean text
+   * Returns { text, toolCalls } with cleaned text and parsed tool calls
+   */
+  processMessageContent(bubble) {
+    const toolCalls = this.extractToolCalls(bubble);
+    let text = bubble.text || bubble.richText || '';
+    
+    // If we found tool calls, clean the text
+    if (toolCalls && toolCalls.length > 0) {
+      text = this.cleanTextFromToolCalls(text);
+    }
+    
+    return { text, toolCalls };
   }
 
   /**

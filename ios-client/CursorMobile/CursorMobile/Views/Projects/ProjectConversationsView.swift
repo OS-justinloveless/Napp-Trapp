@@ -11,10 +11,45 @@ struct ProjectConversationsView: View {
     @State private var selectedConversation: Conversation?
     @State private var isCreatingChat = false
     @State private var newChatId: String?
+    @State private var searchText = ""
+    @State private var hideReadOnly = false
     
-    /// Conversations filtered to exclude empty ones (0 messages)
+    /// Conversations filtered to exclude empty ones (0 messages) and apply search/filter
     private var filteredConversations: [Conversation] {
-        conversations.filter { $0.messageCount > 0 }
+        var result = conversations.filter { $0.messageCount > 0 }
+        
+        // Filter out read-only if enabled
+        if hideReadOnly {
+            result = result.filter { !$0.isReadOnlyConversation }
+        }
+        
+        // Filter by search text
+        if !searchText.isEmpty {
+            let lowercasedSearch = searchText.lowercased()
+            result = result.filter { conversation in
+                // Search in title
+                if conversation.title.lowercased().contains(lowercasedSearch) {
+                    return true
+                }
+                // Search in project name
+                if let projectName = conversation.projectName,
+                   projectName.lowercased().contains(lowercasedSearch) {
+                    return true
+                }
+                // Search in type
+                if conversation.type.lowercased().contains(lowercasedSearch) {
+                    return true
+                }
+                return false
+            }
+        }
+        
+        return result
+    }
+    
+    /// Non-empty conversations count (before search/filter)
+    private var totalNonEmptyCount: Int {
+        conversations.filter { $0.messageCount > 0 }.count
     }
     
     var body: some View {
@@ -25,12 +60,17 @@ struct ProjectConversationsView: View {
                 ErrorView(message: error) {
                     loadConversations()
                 }
-            } else if filteredConversations.isEmpty {
+            } else if totalNonEmptyCount == 0 {
+                // No conversations at all
                 emptyStateWithNewChat
+            } else if filteredConversations.isEmpty {
+                // Have conversations but filter/search yields no results
+                filteredEmptyState
             } else {
                 conversationsList
             }
         }
+        .searchable(text: $searchText, prompt: "Search conversations...")
         .navigationDestination(item: $selectedConversation) { conversation in
             ConversationDetailView(conversation: conversation)
         }
@@ -65,9 +105,20 @@ struct ProjectConversationsView: View {
             newChatId = nil
             isLoading = true
             error = nil
+            searchText = ""
             loadConversations()
         }
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Menu {
+                    Toggle(isOn: $hideReadOnly) {
+                        Label("Hide Read-Only", systemImage: hideReadOnly ? "eye.slash.fill" : "eye.slash")
+                    }
+                } label: {
+                    Image(systemName: hideReadOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .foregroundColor(hideReadOnly ? .accentColor : .primary)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
                     Button {
@@ -90,6 +141,36 @@ struct ProjectConversationsView: View {
                 }
             }
         }
+    }
+    
+    private var filteredEmptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            
+            Text("No Results")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text(hideReadOnly 
+                ? "No editable conversations match your search. Try adjusting the filter."
+                : "No conversations match your search.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            if hideReadOnly {
+                Button {
+                    hideReadOnly = false
+                } label: {
+                    Text("Show All Conversations")
+                        .font(.subheadline)
+                }
+            }
+        }
+        .padding()
     }
     
     private var emptyStateWithNewChat: some View {
@@ -126,11 +207,39 @@ struct ProjectConversationsView: View {
     
     private var conversationsList: some View {
         List {
+            // Show filter status if active
+            if hideReadOnly || !searchText.isEmpty {
+                HStack {
+                    Text("Showing \(filteredConversations.count) of \(totalNonEmptyCount)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    if hideReadOnly {
+                        Text("Editable only")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.2))
+                            .foregroundColor(.accentColor)
+                            .cornerRadius(4)
+                    }
+                }
+                .listRowBackground(Color.clear)
+            }
+            
             ForEach(filteredConversations) { conversation in
                 ConversationRow(conversation: conversation) {
                     selectedConversation = conversation
                 }
             }
+            
+            // Bottom padding for floating tab bar
+            Color.clear
+                .frame(height: 80)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
         .refreshable {
             await refreshConversations()
