@@ -51,20 +51,10 @@ export default function LoginPage() {
           </div>
           
           {debugLog && debugLog.length > 0 && (
-            <div style={{
-              marginTop: '20px',
-              padding: '12px',
-              background: '#1a1a2e',
-              borderRadius: '8px',
-              fontSize: '11px',
-              fontFamily: 'monospace',
-              maxHeight: '200px',
-              overflow: 'auto',
-              textAlign: 'left'
-            }}>
-              <div style={{ color: '#888', marginBottom: '8px' }}>Debug Log:</div>
+            <div className={styles.debugLog}>
+              <div className={styles.debugLogLabel}>Debug Log:</div>
               {debugLog.map((log, i) => (
-                <div key={i} style={{ color: '#0f0', marginBottom: '4px', wordBreak: 'break-all' }}>
+                <div key={i} className={styles.debugLogEntry}>
                   {log}
                 </div>
               ))}
@@ -147,20 +137,10 @@ export default function LoginPage() {
         </div>
         
         {debugLog && debugLog.length > 0 && (
-          <div style={{
-            marginTop: '20px',
-            padding: '12px',
-            background: '#1a1a2e',
-            borderRadius: '8px',
-            fontSize: '11px',
-            fontFamily: 'monospace',
-            maxHeight: '200px',
-            overflow: 'auto',
-            textAlign: 'left'
-          }}>
-            <div style={{ color: '#888', marginBottom: '8px' }}>Debug Log:</div>
+          <div className={styles.debugLog}>
+            <div className={styles.debugLogLabel}>Debug Log:</div>
             {debugLog.map((log, i) => (
-              <div key={i} style={{ color: '#0f0', marginBottom: '4px', wordBreak: 'break-all' }}>
+              <div key={i} className={styles.debugLogEntry}>
                 {log}
               </div>
             ))}

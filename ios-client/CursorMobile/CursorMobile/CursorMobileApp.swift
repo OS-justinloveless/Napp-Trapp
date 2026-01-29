@@ -4,12 +4,16 @@ import SwiftUI
 struct CursorMobileApp: App {
     @StateObject private var authManager = AuthManager()
     @StateObject private var webSocketManager = WebSocketManager()
+    @StateObject private var themeManager = ThemeManager.shared
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(authManager)
                 .environmentObject(webSocketManager)
+                .environmentObject(themeManager)
+                .tint(themeManager.currentTheme.accentColor)
+                .preferredColorScheme(themeManager.currentTheme.colorScheme)
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }

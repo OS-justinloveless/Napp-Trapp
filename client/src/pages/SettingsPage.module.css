@@ -170,3 +170,107 @@
 .footer p {
   margin-bottom: 4px;
 }
+
+/* Theme Selector Styles */
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.themeOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.themeOption:hover {
+  border-color: var(--border-light);
+  background: var(--bg-tertiary);
+}
+
+.themeOption.themeSelected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.themePreview {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.themeOption:hover .themePreview {
+  transform: scale(1.05);
+}
+
+/* Theme preview colors matching each theme */
+.themePreview[data-theme-preview="night"] {
+  background: #0d0f1a;
+  color: #7dd3e0;
+  border: 1px solid #2a2f42;
+}
+
+.themePreview[data-theme-preview="light"] {
+  background: #f5f7fa;
+  color: #0891b2;
+  border: 1px solid #d1d9e0;
+}
+
+.themePreview[data-theme-preview="forest"] {
+  background: #0d2818;
+  color: #8cd9a8;
+  border: 1px solid #1e5430;
+}
+
+.themePreview[data-theme-preview="desert"] {
+  background: #f5a623;
+  color: #e84393;
+  border: 1px solid #d48a10;
+}
+
+.themePreviewIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.themeName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.themeCheck {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bg-primary);
+}
+
+[data-theme="light"] .themeCheck {
+  color: #ffffff;
+}
+
+[data-theme="desert"] .themeCheck {
+  color: #ffffff;
+}

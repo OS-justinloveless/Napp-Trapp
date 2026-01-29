@@ -33,6 +33,7 @@
 		F000000000000008 /* SystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000008 /* SystemInfo.swift */; };
 		F000000000000009 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000009 /* AuthManager.swift */; };
 		F000000000000040 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000040 /* CacheManager.swift */; };
+		F000000000000041 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000041 /* ThemeManager.swift */; };
 		F000000000000010 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000010 /* APIService.swift */; };
 		F000000000000011 /* WebSocketManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000011 /* WebSocketManager.swift */; };
 		F000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000012 /* LoginView.swift */; };
@@ -84,6 +85,7 @@
 		F100000000000010 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		F100000000000011 /* WebSocketManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketManager.swift; sourceTree = "<group>"; };
 		F100000000000040 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
+		F100000000000041 /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
 
 		F100000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		F100000000000013 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 				F100000000000010 /* APIService.swift */,
 				F100000000000011 /* WebSocketManager.swift */,
 				F100000000000040 /* CacheManager.swift */,
+				F100000000000041 /* ThemeManager.swift */,
 				C100000000000001 /* SyntaxHighlightManager.swift */,
 			);
 			path = Services;
@@ -410,6 +413,7 @@
 			F000000000000008 /* SystemInfo.swift in Sources */,
 			F000000000000009 /* AuthManager.swift in Sources */,
 				F000000000000040 /* CacheManager.swift in Sources */,
+				F000000000000041 /* ThemeManager.swift in Sources */,
 			F000000000000010 /* APIService.swift in Sources */,
 			F000000000000011 /* WebSocketManager.swift in Sources */,
 			F000000000000012 /* LoginView.swift in Sources */,

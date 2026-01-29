@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useTheme, THEMES } from '../context/ThemeContext';
 import styles from './SettingsPage.module.css';
 
 export default function SettingsPage() {
   const { serverUrl, logout, apiRequest } = useAuth();
   const { isConnected, fileChanges } = useWebSocket();
+  const { theme, setTheme } = useTheme();
   
   const [systemInfo, setSystemInfo] = useState(null);
   const [networkInfo, setNetworkInfo] = useState([]);
@@ -55,6 +57,39 @@ export default function SettingsPage() {
 
   return (
     <div className={styles.container}>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Appearance</h2>
+        <div className={styles.themeGrid}>
+          {Object.values(THEMES).map((t) => (
+            <button
+              key={t.id}
+              className={`${styles.themeOption} ${theme === t.id ? styles.themeSelected : ''}`}
+              onClick={() => setTheme(t.id)}
+              aria-label={`Select ${t.name} theme`}
+            >
+              <div 
+                className={styles.themePreview}
+                data-theme-preview={t.id}
+              >
+                <div className={styles.themePreviewIcon}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                    <path d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7z"/>
+                  </svg>
+                </div>
+              </div>
+              <span className={styles.themeName}>{t.name}</span>
+              {theme === t.id && (
+                <span className={styles.themeCheck}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Connection</h2>
         <div className={styles.card}>

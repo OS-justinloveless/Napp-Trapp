@@ -23,8 +23,8 @@ function ProtectedRoute({ children }) {
         justifyContent: 'center', 
         alignItems: 'center', 
         height: '100vh',
-        background: '#0f0f1a',
-        color: '#fff'
+        background: 'var(--bg-primary)',
+        color: 'var(--text-primary)'
       }}>
         Loading...
       </div>

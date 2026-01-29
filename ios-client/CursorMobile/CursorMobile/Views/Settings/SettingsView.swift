@@ -36,11 +36,33 @@ enum AppIconOption: String, CaseIterable, Identifiable {
         case .night: return "IconPreviewNight"
         }
     }
+    
+    /// Maps to the corresponding app theme
+    var theme: AppTheme {
+        switch self {
+        case .forest: return .forest
+        case .desert: return .desert
+        case .mono: return .mono
+        case .night: return .night
+        }
+    }
+    
+    /// Creates icon option from theme
+    static func from(theme: AppTheme) -> AppIconOption {
+        switch theme {
+        case .forest: return .forest
+        case .desert: return .desert
+        case .mono: return .mono
+        case .night: return .night
+        case .light: return .night // Light uses night icon as closest match
+        }
+    }
 }
 
 struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var webSocketManager: WebSocketManager
+    @EnvironmentObject var themeManager: ThemeManager
     
     @State private var systemInfo: SystemInfo?
     @State private var networkInfo: [NetworkInterface] = []
@@ -49,8 +71,10 @@ struct SettingsView: View {
     @State private var error: String?
     @State private var showLogoutConfirmation = false
     
-    // App Icon states
-    @State private var currentAppIcon: AppIconOption = .forest
+    // App Icon states (now derived from theme)
+    private var currentAppIcon: AppIconOption {
+        AppIconOption.from(theme: themeManager.currentTheme)
+    }
     @State private var showIconChangeAlert = false
     
     // iOS Build states
@@ -245,7 +269,7 @@ struct SettingsView: View {
                 Text("Editor")
             }
             
-            // App Icon Section
+            // Appearance / Theme Section
             Section {
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
@@ -253,20 +277,20 @@ struct SettingsView: View {
                     GridItem(.flexible())
                 ], spacing: 16) {
                     ForEach(AppIconOption.allCases) { option in
-                        AppIconButton(
+                        ThemeButton(
                             option: option,
-                            isSelected: currentAppIcon == option,
+                            isSelected: themeManager.currentTheme == option.theme,
                             onSelect: {
-                                changeAppIcon(to: option)
+                                selectTheme(option.theme)
                             }
                         )
                     }
                 }
                 .padding(.vertical, 8)
             } header: {
-                Text("App Icon")
+                Text("Appearance")
             } footer: {
-                Text("Choose your preferred app icon. The icon will change on your home screen.")
+                Text("Choose your color theme. This changes the app colors and icon on your home screen.")
             }
             
             // Cache Section
@@ -480,7 +504,6 @@ struct SettingsView: View {
         }
         .onAppear {
             loadData()
-            detectCurrentAppIcon()
         }
         .alert("Icon Changed", isPresented: $showIconChangeAlert) {
             Button("OK", role: .cancel) {}
@@ -489,25 +512,9 @@ struct SettingsView: View {
         }
     }
     
-    private func detectCurrentAppIcon() {
-        if let iconName = UIApplication.shared.alternateIconName {
-            currentAppIcon = AppIconOption.allCases.first { $0.iconName == iconName } ?? .forest
-        } else {
-            currentAppIcon = .forest
-        }
-    }
-    
-    private func changeAppIcon(to option: AppIconOption) {
-        guard UIApplication.shared.supportsAlternateIcons else { return }
-        
-        UIApplication.shared.setAlternateIconName(option.iconName) { error in
-            if let error = error {
-                print("Error changing app icon: \(error.localizedDescription)")
-            } else {
-                DispatchQueue.main.async {
-                    currentAppIcon = option
-                }
-            }
+    private func selectTheme(_ theme: AppTheme) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            themeManager.currentTheme = theme
         }
     }
     
@@ -649,9 +656,9 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - App Icon Button Component
+// MARK: - Theme Button Component
 
-private struct AppIconButton: View {
+private struct ThemeButton: View {
     let option: AppIconOption
     let isSelected: Bool
     let onSelect: () -> Void
@@ -660,30 +667,38 @@ private struct AppIconButton: View {
         Button(action: onSelect) {
             VStack(spacing: 8) {
                 ZStack {
-                    // Actual icon image from asset catalog
-                    Image(option.previewImageName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
+                    // Theme color preview background
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(option.theme.backgroundColor)
                         .frame(width: 64, height: 64)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    
+                    // Accent color indicator
+                    Circle()
+                        .fill(option.theme.accentColor)
+                        .frame(width: 24, height: 24)
                     
                     // Selection indicator
                     if isSelected {
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.accentColor, lineWidth: 3)
+                            .stroke(option.theme.accentColor, lineWidth: 3)
+                            .frame(width: 64, height: 64)
+                    } else {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                             .frame(width: 64, height: 64)
                     }
                 }
                 
                 Text(option.displayName)
                     .font(.caption2)
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundColor(isSelected ? option.theme.accentColor : .secondary)
                     .lineLimit(1)
                 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(option.theme.accentColor)
                 } else {
                     Image(systemName: "circle")
                         .font(.caption)
@@ -749,5 +764,6 @@ private struct DeviceRow: View {
         SettingsView()
             .environmentObject(AuthManager())
             .environmentObject(WebSocketManager())
+            .environmentObject(ThemeManager.shared)
     }
 }
