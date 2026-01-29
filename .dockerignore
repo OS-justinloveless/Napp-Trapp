@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+server/node_modules
+client/node_modules
+
+# Build outputs (we build inside Docker)
+client/dist
+server/client-dist
+
+# Development files
+*.log
+*.md
+!README.md
+
+# IDE and editor files
+.cursor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# iOS client (not needed for server)
+ios-client
+
+# Environment files (use docker-compose or -e flags)
+.env
+server/.env
+
+# Data directories (mounted as volumes)
+server/.napp-trapp-data
+server/.cursor-mobile-data
+
+# Test files
+*.test.js
+*.spec.js
+__tests__
+
+# Documentation
+*.md
+!README.md
+docs

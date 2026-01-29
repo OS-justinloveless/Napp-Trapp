@@ -41,7 +41,52 @@ The web client automatically detects iOS devices and offers to open the native a
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Option 1: npx (Easiest)
+
+Run directly without installation:
+
+```bash
+npx napptrapp
+```
+
+That's it! Scan the QR code with your phone.
+
+**CLI Options:**
+```bash
+npx napptrapp --help              # Show all options
+npx napptrapp --port 8080         # Run on a different port
+npx napptrapp --token mytoken     # Use a specific auth token
+```
+
+### Option 2: Docker
+
+Run with Docker:
+
+```bash
+docker run -p 3847:3847 justinlovelessx/napptrapp
+```
+
+Or using Docker Compose:
+
+```bash
+# Clone the repo
+git clone https://github.com/OS-justinloveless/Napp-Trapp.git
+cd Napp-Trapp
+
+# Start with docker-compose
+docker-compose up
+```
+
+**Docker with persistent data:**
+```bash
+docker run -p 3847:3847 -v napptrapp-data:/data justinlovelessx/napptrapp
+```
+
+### Option 3: Manual Installation
+
+If you prefer to install from source:
+
+#### 1. Install Dependencies
 
 ```bash
 # Install server dependencies
@@ -53,14 +98,14 @@ cd ../client
 npm install
 ```
 
-### 2. Build the Client
+#### 2. Build the Client
 
 ```bash
 cd client
 npm run build
 ```
 
-### 3. Start the Server
+#### 3. Start the Server
 
 ```bash
 cd ../server

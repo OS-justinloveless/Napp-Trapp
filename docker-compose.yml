@@ -1,0 +1,36 @@
+# Napp Trapp - Docker Compose Configuration
+# 
+# Quick start:
+#   docker-compose up
+#
+# Or build and run:
+#   docker-compose up --build
+
+version: '3.8'
+
+services:
+  napptrapp:
+    build: .
+    image: justinlovelessx/napptrapp:latest
+    container_name: napptrapp
+    ports:
+      - "${PORT:-3847}:3847"
+    volumes:
+      # Persist auth tokens and data across restarts
+      - napptrapp-data:/data
+      # Optional: Mount host filesystem for file browsing (read-only recommended)
+      # - ${HOME}:/host:ro
+    environment:
+      - PORT=3847
+      # Set a custom auth token (optional - auto-generated if not set)
+      # - AUTH_TOKEN=your-secure-token
+      # Enable verbose logging
+      # - DEBUG=true
+    restart: unless-stopped
+    # Use host network for easier local IP detection
+    # Uncomment if you have issues with QR code IP address
+    # network_mode: host
+
+volumes:
+  napptrapp-data:
+    driver: local

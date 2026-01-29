@@ -1,12 +1,42 @@
 {
-  "name": "napp-trapp-server",
+  "name": "napptrapp",
   "version": "1.0.0",
-  "description": "Local server to control Cursor IDE from mobile devices",
+  "description": "Control Cursor IDE from your mobile phone - local server with QR code connection",
   "main": "src/index.js",
   "type": "module",
+  "bin": {
+    "napptrapp": "./bin/cli.js"
+  },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "prepublishOnly": "npm run build:client",
+    "build:client": "rm -rf client-dist && cd ../client && npm install && npm run build && cp -r dist ../server/client-dist",
+    "postinstall": "echo 'Napp Trapp installed! Run with: npx napptrapp'"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "client-dist/",
+    ".env.example"
+  ],
+  "keywords": [
+    "cursor",
+    "ide",
+    "mobile",
+    "remote",
+    "control",
+    "qr-code",
+    "development"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OS-justinloveless/Napp-Trapp.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

@@ -427,7 +427,7 @@ struct ServerSetupGuideSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var currentStep = 0
     
-    private let totalSteps = 5
+    private let totalSteps = 3
     
     var body: some View {
         NavigationView {
@@ -460,12 +460,6 @@ struct ServerSetupGuideSheet: View {
                         
                         SetupStep3View()
                             .tag(2)
-                        
-                        SetupStep4View()
-                            .tag(3)
-                        
-                        SetupStep5View()
-                            .tag(4)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .frame(minHeight: 450)
@@ -548,21 +542,21 @@ struct SetupStep1View: View {
                 
                 SetupRequirementRow(
                     icon: "shippingbox.fill",
-                    iconColor: .orange,
-                    title: "Node.js installed",
-                    description: "Version 18 or higher. Download from nodejs.org if needed"
+                    iconColor: .blue,
+                    title: "Docker OR Node.js installed",
+                    description: "Docker Desktop (recommended) or Node.js 18+"
                 )
                 
                 SetupRequirementRow(
                     icon: "app.badge.fill",
-                    iconColor: .blue,
+                    iconColor: .purple,
                     title: "Cursor IDE installed",
                     description: "The server connects to Cursor on your computer"
                 )
                 
                 SetupRequirementRow(
                     icon: "wifi",
-                    iconColor: .purple,
+                    iconColor: .orange,
                     title: "Same WiFi network",
                     description: "Your phone and computer must be on the same network"
                 )
@@ -574,102 +568,45 @@ struct SetupStep1View: View {
 struct SetupStep2View: View {
     var body: some View {
         SetupStepContainer(
-            icon: "arrow.down.circle.fill",
-            title: "Download the Project",
-            subtitle: "Get the server code on your computer"
+            icon: "play.circle.fill",
+            title: "Start the Server",
+            subtitle: "One command to get started"
         ) {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Open Terminal on your computer and run:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 16) {
+                // Docker option (recommended)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption2)
+                        Text("Recommended")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    SetupCodeBlockView(code: "docker run justinlovelessx/napptrapp")
+                }
                 
-                SetupCodeBlockView(code: "git clone https://github.com/your-repo/napp-trapp.git")
+                // npx alternative
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Or with Node.js:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    SetupCodeBlockView(code: "npx napptrapp")
+                }
                 
-                Text("Or download the ZIP file from GitHub and extract it.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Divider()
-                
-                Text("Then navigate into the project folder:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                SetupCodeBlockView(code: "cd napp-trapp")
+                SetupNoteView(
+                    icon: "qrcode",
+                    color: .green,
+                    text: "A QR code will appear when the server starts!"
+                )
             }
         }
     }
 }
 
 struct SetupStep3View: View {
-    var body: some View {
-        SetupStepContainer(
-            icon: "shippingbox.fill",
-            title: "Install Dependencies",
-            subtitle: "Set up the server packages"
-        ) {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Install the server dependencies:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                SetupCodeBlockView(code: "cd server\nnpm install")
-                
-                Divider()
-                
-                Text("(Optional) Build the web client for browser access:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                SetupCodeBlockView(code: "cd ../client\nnpm install\nnpm run build")
-                
-                SetupNoteView(
-                    icon: "info.circle.fill",
-                    color: .blue,
-                    text: "The web client is optional if you only use this iOS app."
-                )
-            }
-        }
-    }
-}
-
-struct SetupStep4View: View {
-    var body: some View {
-        SetupStepContainer(
-            icon: "play.circle.fill",
-            title: "Start the Server",
-            subtitle: "Run the server on your computer"
-        ) {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Navigate to the server folder and start it:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                SetupCodeBlockView(code: "cd server\nnpm start")
-                
-                Text("You'll see a QR code appear in your terminal!")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Divider()
-                
-                SetupNoteView(
-                    icon: "lightbulb.fill",
-                    color: .yellow,
-                    text: "Keep this terminal window open. The server must be running to use the app."
-                )
-                
-                SetupNoteView(
-                    icon: "arrow.clockwise.circle.fill",
-                    color: .green,
-                    text: "For development mode with auto-reload, use: npm run dev"
-                )
-            }
-        }
-    }
-}
-
-struct SetupStep5View: View {
     var body: some View {
         SetupStepContainer(
             icon: "qrcode.viewfinder",
@@ -725,6 +662,12 @@ struct SetupStep5View: View {
                     icon: "exclamationmark.triangle.fill",
                     color: .orange,
                     text: "Make sure your phone is connected to the same WiFi network as your computer."
+                )
+                
+                SetupNoteView(
+                    icon: "checkmark.circle.fill",
+                    color: .green,
+                    text: "That's it! You're ready to control Cursor from your phone."
                 )
             }
         }

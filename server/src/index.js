@@ -5,6 +5,7 @@ import cors from 'cors';
 import { config } from 'dotenv';
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import QRCode from 'qrcode';
 
@@ -22,11 +23,58 @@ const wss = new WebSocketServer({ server });
 // Configuration
 const PORT = process.env.PORT || 3847;
 
+// Determine client dist directory
+// When running from npm package (CLI), use bundled client-dist
+// When running in development, use ../../client/dist
+function getClientDistPath() {
+  // First check for bundled client-dist (npm package)
+  const bundledPath = path.join(__dirname, '../client-dist');
+  if (fs.existsSync(bundledPath)) {
+    return bundledPath;
+  }
+  
+  // Fall back to development path
+  const devPath = path.join(__dirname, '../../client/dist');
+  if (fs.existsSync(devPath)) {
+    return devPath;
+  }
+  
+  // If neither exists, warn but return dev path (will 404 gracefully)
+  console.warn('Warning: Client dist directory not found. Run "npm run build" in client/ first.');
+  return devPath;
+}
+
+const CLIENT_DIST_PATH = getClientDistPath();
+
+// Determine data directory
+// Priority: NAPPTRAPP_DATA_DIR env var > ~/.napptrapp > local .napp-trapp-data
+function getDataDir() {
+  if (process.env.NAPPTRAPP_DATA_DIR) {
+    return process.env.NAPPTRAPP_DATA_DIR;
+  }
+  
+  // When running from CLI/npx, use home directory
+  if (process.env.NAPPTRAPP_CLI) {
+    const homeDir = os.homedir();
+    return path.join(homeDir, '.napptrapp');
+  }
+  
+  // Development mode: use local directory
+  return path.join(__dirname, '../.napp-trapp-data');
+}
+
+const DATA_DIR = getDataDir();
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 // Initialize auth manager with persistence
 // If AUTH_TOKEN env var is set, it overrides the persisted token
 // Otherwise, the token is loaded from disk (or generated once and saved)
 const authManager = new AuthManager({
-  dataDir: path.join(__dirname, '../.napp-trapp-data'),
+  dataDir: DATA_DIR,
   masterToken: process.env.AUTH_TOKEN || null  // Only override if explicitly set
 });
 
@@ -56,7 +104,7 @@ function getConnectionUrl() {
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../../client/dist')));
+app.use(express.static(CLIENT_DIST_PATH));
 
 // Auth middleware for API routes
 app.use('/api', (req, res, next) => {
@@ -113,7 +161,7 @@ app.get('/qr.png', async (req, res) => {
 
 // Serve client app for all other routes
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
+  res.sendFile(path.join(CLIENT_DIST_PATH, 'index.html'));
 });
 
 // Display startup message with QR code
