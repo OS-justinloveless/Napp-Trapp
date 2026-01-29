@@ -72,7 +72,7 @@ router.post('/', async (req, res) => {
     await fs.mkdir(path.join(fullPath, 'src'), { recursive: true });
     await fs.writeFile(
       path.join(fullPath, 'README.md'),
-      `# ${name}\n\nCreated from Cursor Mobile Access`
+      `# ${name}\n\nCreated from Napp Trapp`
     );
     
     res.json({ 

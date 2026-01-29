@@ -57,10 +57,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.cursor.mobile</string>
+			<string>com.napptrapp.app</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>cursor-mobile</string>
+				<string>napp-trapp</string>
 			</array>
 		</dict>
 	</array>
@@ -81,8 +81,8 @@
 		<string>LaunchIcon</string>
 	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Cursor Mobile needs access to your photos to attach images to chat messages.</string>
+	<string>Napp Trapp needs access to your photos to attach images to chat messages.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Cursor Mobile needs access to your camera to take photos for chat messages.</string>
+	<string>Napp Trapp needs access to your camera to take photos for chat messages.</string>
 </dict>
 </plist>

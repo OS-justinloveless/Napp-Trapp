@@ -21,7 +21,7 @@ struct LoginView: View {
                             .font(.system(size: 60))
                             .foregroundColor(.accentColor)
                         
-                        Text("Cursor Mobile")
+                        Text("Napp Trapp")
                             .font(.largeTitle)
                             .fontWeight(.bold)
                         
@@ -583,7 +583,7 @@ struct SetupStep2View: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
-                SetupCodeBlockView(code: "git clone https://github.com/your-repo/cursor-mobile.git")
+                SetupCodeBlockView(code: "git clone https://github.com/your-repo/napp-trapp.git")
                 
                 Text("Or download the ZIP file from GitHub and extract it.")
                     .font(.subheadline)
@@ -595,7 +595,7 @@ struct SetupStep2View: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
-                SetupCodeBlockView(code: "cd cursor-mobile")
+                SetupCodeBlockView(code: "cd napp-trapp")
             }
         }
     }

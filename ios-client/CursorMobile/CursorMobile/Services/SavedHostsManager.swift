@@ -57,7 +57,7 @@ class SavedHostsManager: ObservableObject {
     
     @Published private(set) var savedHosts: [SavedHost] = []
     
-    private let storageKey = "cursor-mobile-saved-hosts"
+    private let storageKey = "napp-trapp-saved-hosts"
     
     private init() {
         loadHosts()

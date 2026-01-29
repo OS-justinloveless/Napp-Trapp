@@ -1,4 +1,4 @@
-# Cursor Mobile Access
+# Napp Trapp
 
 Control Cursor IDE on your laptop from your mobile phone. This app provides a local server that runs on your laptop and a mobile-friendly interface accessible from your phone - available as both a web app and a native iOS app.
 
@@ -70,7 +70,7 @@ npm start
 You'll see a QR code in your terminal:
 ```
 ╔═══════════════════════════════════════════════════════════════════╗
-║              Cursor Mobile Access Server                           ║
+║              Napp Trapp Server                                      ║
 ╠═══════════════════════════════════════════════════════════════════╣
 ║                                                                    ║
 ║   Scan this QR code with your phone camera to connect:            ║
@@ -153,7 +153,7 @@ The client dev server runs on port 5173 and proxies API requests to the server o
 ## Project Structure
 
 ```
-cursor-mobile-access/
+napp-trapp/
 ├── server/                        # Node.js backend server
 │   ├── src/
 │   │   ├── index.js              # Main server entry point
@@ -338,7 +338,7 @@ See `ios-client/README.md` for detailed iOS app documentation.
 
 - Native SwiftUI interface optimized for iOS
 - Built-in QR code scanner
-- Deep linking support (`cursor-mobile://connect?...`)
+- Deep linking support (`napp-trapp://connect?...`)
 - Real-time WebSocket updates
 - Secure credential storage in Keychain
 

@@ -259,7 +259,7 @@ export class CursorWorkspace {
         );
         await fs.writeFile(
           path.join(projectPath, 'index.js'),
-          'console.log("Hello from Cursor Mobile!");\n'
+          'console.log("Hello from Napp Trapp!");\n'
         );
         break;
         
@@ -270,7 +270,7 @@ export class CursorWorkspace {
         );
         await fs.writeFile(
           path.join(projectPath, 'main.py'),
-          'print("Hello from Cursor Mobile!")\n'
+          'print("Hello from Napp Trapp!")\n'
         );
         break;
         

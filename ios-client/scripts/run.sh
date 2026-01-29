@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run script for Cursor Mobile iOS App on Simulator
+# Run script for Napp Trapp iOS App on Simulator
 # Usage: ./scripts/run.sh [simulator-name]
 
 set -e
@@ -16,7 +16,7 @@ CONFIGURATION="Debug"
 APP_PATH="$DERIVED_DATA/Build/Products/$CONFIGURATION-iphonesimulator/$SCHEME.app"
 
 echo "================================================"
-echo "Running Cursor Mobile on iOS Simulator"
+echo "Running Napp Trapp on iOS Simulator"
 echo "Simulator: $SIMULATOR_NAME"
 echo "================================================"
 

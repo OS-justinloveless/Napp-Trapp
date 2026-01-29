@@ -21,8 +21,8 @@ struct CursorMobileApp: App {
     }
     
     private func handleDeepLink(_ url: URL) {
-        // Handle cursor-mobile:// URLs or universal links
-        // URL format: cursor-mobile://connect?server=IP&token=TOKEN
+        // Handle napp-trapp:// URLs or universal links
+        // URL format: napp-trapp://connect?server=IP&token=TOKEN
         // Or: https://your-server:3847/?token=TOKEN
         
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
@@ -38,8 +38,8 @@ struct CursorMobileApp: App {
         }
         
         // Determine server URL
-        if url.scheme == "cursor-mobile" {
-            // Custom URL scheme: cursor-mobile://connect?server=IP&token=TOKEN
+        if url.scheme == "napp-trapp" {
+            // Custom URL scheme: napp-trapp://connect?server=IP&token=TOKEN
             if let serverParam = components.queryItems?.first(where: { $0.name == "server" })?.value {
                 serverUrl = "http://\(serverParam):3847"
             }

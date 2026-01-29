@@ -26,7 +26,7 @@ const PORT = process.env.PORT || 3847;
 // If AUTH_TOKEN env var is set, it overrides the persisted token
 // Otherwise, the token is loaded from disk (or generated once and saved)
 const authManager = new AuthManager({
-  dataDir: path.join(__dirname, '../.cursor-mobile-data'),
+  dataDir: path.join(__dirname, '../.napp-trapp-data'),
   masterToken: process.env.AUTH_TOKEN || null  // Only override if explicitly set
 });
 
@@ -122,7 +122,7 @@ async function displayStartupMessage() {
   
   console.log('\n');
   console.log('╔═══════════════════════════════════════════════════════════════════╗');
-  console.log('║              Cursor Mobile Access Server                           ║');
+  console.log('║              Napp Trapp Server                                      ║');
   console.log('╠═══════════════════════════════════════════════════════════════════╣');
   console.log('║                                                                    ║');
   console.log('║   Scan this QR code with your phone camera to connect:            ║');

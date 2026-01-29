@@ -1,4 +1,4 @@
-# Cursor Mobile iOS App - Makefile
+# Napp Trapp iOS App - Makefile
 # Build and run the iOS app from the command line
 
 PROJECT_DIR = CursorMobile
@@ -122,7 +122,7 @@ archive:
 
 # Help
 help:
-	@echo "Cursor Mobile iOS App - Build Commands"
+	@echo "Napp Trapp iOS App - Build Commands"
 	@echo ""
 	@echo "Usage: make [target] [SIMULATOR='iPhone Name'] [SIMULATOR_OS='18.5']"
 	@echo ""

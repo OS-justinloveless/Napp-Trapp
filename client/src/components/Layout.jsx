@@ -16,7 +16,7 @@ export default function Layout({ children }) {
   
   // Get current page title
   const currentNav = navItems.find(item => location.pathname.startsWith(item.path));
-  const title = currentNav?.label || 'Cursor Mobile';
+  const title = currentNav?.label || 'Napp Trapp';
 
   return (
     <div className={styles.layout}>

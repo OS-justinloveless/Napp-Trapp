@@ -1,6 +1,6 @@
 # Photo and Attachment Support for Mobile Chats
 
-This document describes the implementation of photo and attachment support in Cursor Mobile.
+This document describes the implementation of photo and attachment support in Napp Trapp.
 
 ## Overview
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import styles from './iOSAppBanner.module.css';
 
-const IOS_APP_SCHEME = 'cursor-mobile';
-const IOS_APP_STORE_URL = 'https://apps.apple.com/app/cursor-mobile'; // Placeholder
+const IOS_APP_SCHEME = 'napp-trapp';
+const IOS_APP_STORE_URL = 'https://apps.apple.com/app/napp-trapp'; // Placeholder
 
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -33,7 +33,7 @@ export default function IOSAppBanner() {
 
   function openNativeApp() {
     // Get current URL and auth token
-    const token = localStorage.getItem('cursor-mobile-auth');
+    const token = localStorage.getItem('napp-trapp-auth');
     const authData = token ? JSON.parse(token) : null;
     
     // Build deep link URL
@@ -63,7 +63,7 @@ export default function IOSAppBanner() {
       <div className={styles.content}>
         <div className={styles.icon}>📱</div>
         <div className={styles.text}>
-          <strong>Cursor Mobile App</strong>
+          <strong>Napp Trapp App</strong>
           <span>Get a better experience with our native iOS app</span>
         </div>
       </div>

@@ -1,6 +1,6 @@
-# Cursor Mobile - iOS App
+# Napp Trapp - iOS App
 
-A native SwiftUI iOS client for Cursor Mobile Access. Control your Cursor IDE on your laptop directly from your iPhone or iPad.
+A native SwiftUI iOS client for Napp Trapp. Control your Cursor IDE on your laptop directly from your iPhone or iPad.
 
 ## Features
 
@@ -19,7 +19,7 @@ A native SwiftUI iOS client for Cursor Mobile Access. Control your Cursor IDE on
 - iOS 17.0 or later
 - iPhone or iPad
 - Xcode 15.0 or later (for building)
-- Your laptop running the Cursor Mobile Access server
+- Your laptop running the Napp Trapp server
 
 ## Installation
 
@@ -208,7 +208,7 @@ The app supports two URL schemes:
 ### Custom URL Scheme
 
 ```
-cursor-mobile://connect?server=192.168.1.100:3847&token=YOUR_TOKEN
+napp-trapp://connect?server=192.168.1.100:3847&token=YOUR_TOKEN
 ```
 
 ### Web URL (Universal Links)
@@ -227,7 +227,7 @@ The app requests the following permissions:
 
 ## API Compatibility
 
-The iOS app is fully compatible with the Cursor Mobile Access server API:
+The iOS app is fully compatible with the Napp Trapp server API:
 
 - `GET /api/projects` - List projects
 - `GET /api/projects/:id/tree` - Get project file tree

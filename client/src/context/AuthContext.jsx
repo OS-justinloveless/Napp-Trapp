@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
-const STORAGE_KEY = 'cursor-mobile-auth';
+const STORAGE_KEY = 'napp-trapp-auth';
 
 // Check for token in URL query params (from QR code scan)
 function getTokenFromUrl() {

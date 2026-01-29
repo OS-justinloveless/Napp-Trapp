@@ -9,8 +9,8 @@ client/dist/
 .env.local
 .env.*.local
 
-# Cursor Mobile auth persistence (contains sensitive tokens)
-.cursor-mobile-data/
+# Napp Trapp auth persistence (contains sensitive tokens)
+.napp-trapp-data/
 
 # Logs
 *.log

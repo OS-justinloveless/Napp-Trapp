@@ -57,7 +57,7 @@ export class MobileChatStore {
   constructor() {
     // Use the server directory (parent of utils) for consistent path
     const serverDir = path.resolve(__dirname, '../..');
-    this.dataDir = path.join(serverDir, '.cursor-mobile-data');
+    this.dataDir = path.join(serverDir, '.napp-trapp-data');
     this.storePath = path.join(this.dataDir, 'mobile-chats.json');
     this.data = null;
     this.saveTimeout = null;

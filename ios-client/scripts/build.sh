@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for Cursor Mobile iOS App
+# Build script for Napp Trapp iOS App
 # Usage: ./scripts/build.sh [debug|release] [simulator|device]
 
 set -e
@@ -31,7 +31,7 @@ case "$CONFIGURATION" in
 esac
 
 echo "================================================"
-echo "Building Cursor Mobile iOS App"
+echo "Building Napp Trapp iOS App"
 echo "Configuration: $CONFIGURATION"
 echo "Target: $TARGET"
 echo "================================================"

@@ -10,7 +10,7 @@ export class AuthManager {
    * @param {string} options.masterToken - Override master token (from env var)
    */
   constructor(options = {}) {
-    this.dataDir = options.dataDir || path.join(process.cwd(), '.cursor-mobile-data');
+    this.dataDir = options.dataDir || path.join(process.cwd(), '.napp-trapp-data');
     this.dataFilePath = path.join(this.dataDir, 'auth.json');
     this.sessions = new Map();
     

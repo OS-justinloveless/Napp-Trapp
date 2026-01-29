@@ -70,7 +70,7 @@ export default function LoginPage() {
       <div className={styles.card}>
         <div className={styles.logo}>
           <span className={styles.logoIcon}>⌨️</span>
-          <h1 className={styles.title}>Cursor Mobile</h1>
+          <h1 className={styles.title}>Napp Trapp</h1>
           <p className={styles.subtitle}>Control Cursor from your phone</p>
         </div>
         

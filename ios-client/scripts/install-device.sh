@@ -14,7 +14,7 @@ CONFIGURATION="Debug"
 APP_PATH="$DERIVED_DATA/Build/Products/$CONFIGURATION-iphoneos/$SCHEME.app"
 
 echo "================================================"
-echo "Installing Cursor Mobile on iOS Device"
+echo "Installing Napp Trapp on iOS Device"
 echo "================================================"
 
 # Check if ios-deploy is installed

@@ -195,7 +195,7 @@ export default function SettingsPage() {
       </section>
 
       <footer className={styles.footer}>
-        <p>Cursor Mobile Access v1.0.0</p>
+        <p>Napp Trapp v1.0.0</p>
         <p>Control your Cursor IDE remotely</p>
       </footer>
     </div>

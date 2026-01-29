@@ -1,6 +1,6 @@
 {
-  "name": "Cursor Mobile Access",
-  "short_name": "Cursor Mobile",
+  "name": "Napp Trapp",
+  "short_name": "Napp Trapp",
   "description": "Control Cursor IDE from your mobile device",
   "start_url": "/",
   "display": "standalone",

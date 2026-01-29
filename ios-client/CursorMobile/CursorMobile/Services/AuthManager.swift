@@ -10,7 +10,7 @@ class AuthManager: ObservableObject {
     @Published var isLoading = true
     @Published var error: String?
     
-    private let storageKey = "cursor-mobile-auth"
+    private let storageKey = "napp-trapp-auth"
     private let savedHostsManager = SavedHostsManager.shared
     
     init() {

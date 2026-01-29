@@ -263,7 +263,7 @@ struct MainTabView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Cursor Mobile")
+            .navigationTitle("Napp Trapp")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     drawerToggleButton

@@ -1,5 +1,5 @@
 {
-  "name": "cursor-mobile-server",
+  "name": "napp-trapp-server",
   "version": "1.0.0",
   "description": "Local server to control Cursor IDE from mobile devices",
   "main": "src/index.js",

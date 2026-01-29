@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const ThemeContext = createContext(null);
 
-const STORAGE_KEY = 'cursor-mobile-theme';
+const STORAGE_KEY = 'napp-trapp-theme';
 
 export const THEMES = {
   night: {
