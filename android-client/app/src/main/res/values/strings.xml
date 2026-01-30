@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Napp Trapp</string>
+    <string name="app_description">Control your Cursor IDE from your Android device</string>
+</resources>

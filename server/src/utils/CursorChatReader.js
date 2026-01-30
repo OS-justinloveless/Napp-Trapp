@@ -12,6 +12,45 @@ export class CursorChatReader {
     this.mobileChatStore = MobileChatStore.getInstance();
   }
 
+  /**
+   * Estimate token count from text
+   * Uses a rough approximation of ~4 characters per token for English text
+   * This matches the typical tokenization ratio for GPT-style models
+   */
+  estimateTokens(text) {
+    if (!text) return 0;
+    // Average English word is ~5 characters, average token is ~4 characters
+    // This is a reasonable approximation for most LLM tokenizers
+    return Math.ceil(text.length / 4);
+  }
+
+  /**
+   * Estimate total tokens for a conversation based on its messages
+   */
+  async estimateConversationTokens(chatId, type = 'chat', workspaceId = 'global') {
+    const messages = await this.getChatMessages(chatId, type, workspaceId);
+    let totalTokens = 0;
+    
+    for (const msg of messages) {
+      if (msg.text) {
+        totalTokens += this.estimateTokens(msg.text);
+      }
+      // Also count tool call inputs/outputs
+      if (msg.toolCalls) {
+        for (const tc of msg.toolCalls) {
+          if (tc.input) {
+            totalTokens += this.estimateTokens(JSON.stringify(tc.input));
+          }
+          if (tc.result) {
+            totalTokens += this.estimateTokens(tc.result);
+          }
+        }
+      }
+    }
+    
+    return totalTokens;
+  }
+
   getWorkspaceStoragePath() {
     const homeDir = os.homedir();
     

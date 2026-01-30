@@ -113,9 +113,27 @@ router.get('/:projectId/conversations', async (req, res) => {
     
     const conversations = await chatReader.getChatsByProjectPath(project.path);
     
+    // Estimate tokens for each conversation
+    let totalProjectTokens = 0;
+    const conversationsWithTokens = await Promise.all(
+      conversations.map(async (conv) => {
+        const estimatedTokens = await chatReader.estimateConversationTokens(
+          conv.id,
+          conv.type,
+          conv.workspaceId
+        );
+        totalProjectTokens += estimatedTokens;
+        return {
+          ...conv,
+          estimatedTokens
+        };
+      })
+    );
+    
     res.json({ 
-      conversations,
-      total: conversations.length,
+      conversations: conversationsWithTokens,
+      total: conversationsWithTokens.length,
+      totalTokens: totalProjectTokens,
       projectName: project.name,
       projectPath: project.path
     });
