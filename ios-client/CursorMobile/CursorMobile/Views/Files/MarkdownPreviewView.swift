@@ -115,7 +115,7 @@ struct MarkdownPreviewView: View {
             }
             
             // Numbered list
-            if let match = trimmed.firstMatch(of: /^\d+\.\s/) {
+            if trimmed.firstMatch(of: /^\d+\.\s/) != nil {
                 var items: [String] = []
                 while i < lines.count {
                     let listLine = lines[i].trimmingCharacters(in: .whitespaces)

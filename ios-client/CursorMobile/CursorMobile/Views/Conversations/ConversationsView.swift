@@ -676,13 +676,13 @@ struct ConversationDetailView: View {
                     }
                 }
             }
-            .onChange(of: messages.count) { newCount in
+            .onChange(of: messages.count) {
                 // Only auto-scroll if we're adding new messages (not loading older ones)
                 if hasScrolledToBottom && !isLoadingMore {
                     scrollToBottom(proxy: proxy)
                 }
             }
-            .onChange(of: streamingMessage?.text) { _ in
+            .onChange(of: streamingMessage?.text) {
                 scrollToBottom(proxy: proxy)
             }
         }
@@ -1168,7 +1168,7 @@ struct ConversationDetailView: View {
                                     return updated
                                 }
                                 // Add final message
-                                var finalMessage = ConversationMessage(
+                                let finalMessage = ConversationMessage(
                                     id: "response-\(Date().timeIntervalSince1970)",
                                     type: "assistant",
                                     text: assistantText,
@@ -1204,7 +1204,7 @@ struct ConversationDetailView: View {
                                 }
                                 return updated
                             }
-                            var finalMessage = ConversationMessage(
+                            let finalMessage = ConversationMessage(
                                 id: "response-\(Date().timeIntervalSince1970)",
                                 type: "assistant",
                                 text: assistantText,

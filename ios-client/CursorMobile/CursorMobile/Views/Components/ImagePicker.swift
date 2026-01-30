@@ -40,7 +40,7 @@ struct ImagePickerButton: View {
             maxSelectionCount: maxImages - selectedImages.count,
             matching: .images
         )
-        .onChange(of: photoPickerItems) { newItems in
+        .onChange(of: photoPickerItems) { _, newItems in
             loadImages(from: newItems)
         }
         .fullScreenCover(isPresented: $showingCamera) {
