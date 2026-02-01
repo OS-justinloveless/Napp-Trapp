@@ -147,8 +147,13 @@ struct MessageAttachment: Codable, Identifiable, Hashable {
     
     enum AttachmentType: String, Codable {
         case image
+        case video
         case document
         case file
+    }
+    
+    var isVideo: Bool {
+        type == .video
     }
     
     var displayName: String {
@@ -194,6 +199,67 @@ struct SelectedImage: Identifiable, Equatable {
     }
     
     static func == (lhs: SelectedImage, rhs: SelectedImage) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// Model for selected media (image or video)
+enum SelectedMedia: Identifiable, Equatable {
+    case image(SelectedImage)
+    case video(SelectedVideo)
+    
+    var id: UUID {
+        switch self {
+        case .image(let img): return img.id
+        case .video(let vid): return vid.id
+        }
+    }
+    
+    var isVideo: Bool {
+        if case .video = self { return true }
+        return false
+    }
+    
+    var thumbnail: UIImage? {
+        switch self {
+        case .image(let img): return img.thumbnail()
+        case .video(let vid): return vid.thumbnail
+        }
+    }
+    
+    static func == (lhs: SelectedMedia, rhs: SelectedMedia) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// Model for a selected video
+struct SelectedVideo: Identifiable, Equatable {
+    let id = UUID()
+    let data: Data
+    let thumbnail: UIImage?
+    let duration: Double?
+    let mimeType: String
+    
+    /// Convert video data to base64 encoded string
+    func toBase64() -> String {
+        return data.base64EncodedString()
+    }
+    
+    /// Get file size in bytes
+    var size: Int {
+        return data.count
+    }
+    
+    /// Get thumbnail as base64
+    func thumbnailBase64(compressionQuality: CGFloat = 0.5) -> String? {
+        guard let thumbnail = thumbnail,
+              let data = thumbnail.jpegData(compressionQuality: compressionQuality) else {
+            return nil
+        }
+        return data.base64EncodedString()
+    }
+    
+    static func == (lhs: SelectedVideo, rhs: SelectedVideo) -> Bool {
         lhs.id == rhs.id
     }
 }

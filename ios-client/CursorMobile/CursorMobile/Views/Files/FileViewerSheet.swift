@@ -1,4 +1,6 @@
 import SwiftUI
+import AVKit
+import PDFKit
 
 struct FileViewerSheet: View {
     @EnvironmentObject var authManager: AuthManager
@@ -15,6 +17,7 @@ struct FileViewerSheet: View {
     @State private var showSaveSuccess = false
     @State private var fileInfo: FileContent?
     @State private var showMarkdownPreview = true
+    @State private var forceTextView = false
     
     var hasChanges: Bool {
         content != originalContent
@@ -74,10 +77,10 @@ struct FileViewerSheet: View {
                             }
                         }
                         .disabled(!hasChanges || isSaving)
-                    } else {
+                    } else if !isEditingDisabled {
                         HStack(spacing: 16) {
                             // Preview/Source toggle for markdown files
-                            if isMarkdownFile {
+                            if isMarkdownFile && !(fileInfo?.isBinaryFile ?? false) {
                                 Button {
                                     showMarkdownPreview.toggle()
                                 } label: {
@@ -86,7 +89,7 @@ struct FileViewerSheet: View {
                                 .help(showMarkdownPreview ? "Show Source" : "Show Preview")
                             }
                             
-                            // Edit button
+                            // Edit button (hidden for binary files unless viewing as text)
                             Button {
                                 isEditing = true
                                 // When editing, always show source
@@ -109,10 +112,22 @@ struct FileViewerSheet: View {
         }
     }
     
+    /// Whether this file is a media file (image, video, or audio)
+    private var isMediaFile: Bool {
+        guard let fileInfo = fileInfo else { return false }
+        return fileInfo.isImage || fileInfo.isVideo || fileInfo.isAudio
+    }
+    
+    /// Whether editing should be disabled for this file type
+    private var isEditingDisabled: Bool {
+        guard let fileInfo = fileInfo else { return false }
+        return fileInfo.isBinaryFile && !forceTextView
+    }
+    
     private var fileContentView: some View {
         VStack(spacing: 0) {
-            // File info bar
-            if let fileInfo = fileInfo {
+            // File info bar (only for text files or when viewing binary as text)
+            if let fileInfo = fileInfo, (!fileInfo.isBinaryFile || forceTextView) {
                 HStack {
                     Label(ByteCountFormatter.string(fromByteCount: Int64(fileInfo.size), countStyle: .file), systemImage: "doc")
                     
@@ -130,17 +145,68 @@ struct FileViewerSheet: View {
                 .background(Color(.secondarySystemBackground))
             }
             
-            // Content
-            if isEditing {
-                TextEditor(text: $content)
-                    .font(.system(.body, design: .monospaced))
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-            } else if isMarkdownFile && showMarkdownPreview {
-                MarkdownPreviewView(content: content)
+            // Content - route to appropriate viewer based on file type
+            if let fileInfo = fileInfo {
+                if fileInfo.isImage && !forceTextView {
+                    // Image viewer
+                    ImageViewerView(
+                        base64Data: content,
+                        fileName: fileName,
+                        fileSize: fileInfo.size
+                    )
+                } else if fileInfo.isVideo && !forceTextView {
+                    // Video player
+                    VideoPlayerView(
+                        base64Data: content,
+                        fileName: fileName,
+                        fileSize: fileInfo.size,
+                        mimeType: fileInfo.mimeType
+                    )
+                } else if fileInfo.isAudio && !forceTextView {
+                    // Audio player
+                    AudioPlayerView(
+                        base64Data: content,
+                        fileName: fileName,
+                        fileSize: fileInfo.size,
+                        mimeType: fileInfo.mimeType
+                    )
+                } else if fileInfo.isPDF && !forceTextView {
+                    // PDF viewer
+                    PDFViewerView(
+                        base64Data: content,
+                        fileName: fileName,
+                        fileSize: fileInfo.size
+                    )
+                } else if fileInfo.isBinaryNonMedia && !forceTextView {
+                    // Binary file view with option to view as text
+                    BinaryFileView(
+                        fileName: fileName,
+                        fileSize: fileInfo.size,
+                        mimeType: fileInfo.mimeType,
+                        fileExtension: fileInfo.extension,
+                        onViewAsText: {
+                            forceTextView = true
+                        }
+                    )
+                } else if isEditing {
+                    // Text editor mode
+                    TextEditor(text: $content)
+                        .font(.system(.body, design: .monospaced))
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                } else if isMarkdownFile && showMarkdownPreview && !fileInfo.isBinaryFile {
+                    // Markdown preview
+                    MarkdownPreviewView(content: content)
+                } else {
+                    // Code/text view (including binary viewed as text)
+                    ScrollView {
+                        HighlightedCodeView(content: content, language: fileInfo.language)
+                    }
+                }
             } else {
+                // Fallback for when fileInfo is nil (shouldn't happen)
                 ScrollView {
-                    HighlightedCodeView(content: content, language: fileInfo?.language ?? "plaintext")
+                    HighlightedCodeView(content: content, language: "plaintext")
                 }
             }
         }

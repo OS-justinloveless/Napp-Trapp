@@ -265,7 +265,7 @@ struct ConversationDetailView: View {
     @State private var forkedConversation: Conversation?
     @State private var showForkSuccess = false
     @FocusState private var isInputFocused: Bool
-    @State private var selectedImages: [SelectedImage] = []
+    @State private var selectedMedia: [SelectedMedia] = []
     
     // Model and mode state
     @State private var currentModelId: String?
@@ -716,20 +716,18 @@ struct ConversationDetailView: View {
             
             Divider()
             
-            // Image attachments preview
-            if !selectedImages.isEmpty {
+            // Media attachments preview (images and videos)
+            if !selectedMedia.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(selectedImages) { selectedImage in
+                        ForEach(selectedMedia) { media in
                             ZStack(alignment: .topTrailing) {
-                                Image(uiImage: selectedImage.image)
-                                    .resizable()
-                                    .scaledToFill()
+                                MediaThumbnailView(media: media)
                                     .frame(width: 60, height: 60)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 
                                 Button {
-                                    removeImage(selectedImage)
+                                    removeMedia(media)
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .font(.system(size: 20))
@@ -764,7 +762,7 @@ struct ConversationDetailView: View {
                     }
                 
                 // Image picker
-                ImagePickerButton(selectedImages: $selectedImages, maxImages: 5)
+                ImagePickerButton(selectedImages: $selectedMedia, maxImages: 5)
                     .disabled(isSending)
                 
                 // Send button
@@ -785,13 +783,13 @@ struct ConversationDetailView: View {
         .animation(.easeInOut(duration: 0.2), value: triggerState != nil)
     }
     
-    private func removeImage(_ image: SelectedImage) {
-        selectedImages.removeAll { $0.id == image.id }
+    private func removeMedia(_ media: SelectedMedia) {
+        selectedMedia.removeAll { $0.id == media.id }
     }
     
     private var canSend: Bool {
         let hasText = !messageInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasAttachments = !selectedImages.isEmpty
+        let hasAttachments = !selectedMedia.isEmpty
         return (hasText || hasAttachments) && !isSending
     }
     
@@ -1010,34 +1008,50 @@ struct ConversationDetailView: View {
     private func sendMessage() {
         let trimmedMessage = messageInput.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasText = !trimmedMessage.isEmpty
-        let hasImages = !selectedImages.isEmpty
+        let hasMedia = !selectedMedia.isEmpty
         
-        guard (hasText || hasImages), !isSending else { return }
+        guard (hasText || hasMedia), !isSending else { return }
         
         let userMessage = trimmedMessage
-        let imagesToSend = selectedImages
+        let mediaToSend = selectedMedia
         
         // Clear input
         messageInput = ""
-        selectedImages = []
+        selectedMedia = []
         isSending = true
         error = nil
         isInputFocused = false
         
-        // Convert images to attachments
+        // Convert media to attachments
         var attachments: [MessageAttachment] = []
-        for selectedImage in imagesToSend {
-            if let base64 = selectedImage.toBase64(),
-               let thumbnailData = selectedImage.thumbnail().jpegData(compressionQuality: 0.5)?.base64EncodedString() {
+        for media in mediaToSend {
+            switch media {
+            case .image(let selectedImage):
+                if let base64 = selectedImage.toBase64(),
+                   let thumbnailData = selectedImage.thumbnail().jpegData(compressionQuality: 0.5)?.base64EncodedString() {
+                    let attachment = MessageAttachment(
+                        id: UUID().uuidString,
+                        type: .image,
+                        filename: "image-\(Date().timeIntervalSince1970).jpg",
+                        mimeType: "image/jpeg",
+                        size: selectedImage.estimatedSize,
+                        data: base64,
+                        url: nil,
+                        thumbnailData: thumbnailData
+                    )
+                    attachments.append(attachment)
+                }
+            case .video(let selectedVideo):
+                let fileExtension = selectedVideo.mimeType == "video/quicktime" ? "mov" : "mp4"
                 let attachment = MessageAttachment(
                     id: UUID().uuidString,
-                    type: .image,
-                    filename: "image-\(Date().timeIntervalSince1970).jpg",
-                    mimeType: "image/jpeg",
-                    size: selectedImage.estimatedSize,
-                    data: base64,
+                    type: .video,
+                    filename: "video-\(Date().timeIntervalSince1970).\(fileExtension)",
+                    mimeType: selectedVideo.mimeType,
+                    size: selectedVideo.size,
+                    data: selectedVideo.toBase64(),
                     url: nil,
-                    thumbnailData: thumbnailData
+                    thumbnailData: selectedVideo.thumbnailBase64()
                 )
                 attachments.append(attachment)
             }
@@ -1654,11 +1668,78 @@ struct AttachmentsView: View {
             ForEach(attachments) { attachment in
                 if attachment.isImage {
                     ImageAttachmentView(attachment: attachment, isUserMessage: isUserMessage)
+                } else if attachment.isVideo {
+                    VideoAttachmentView(attachment: attachment, isUserMessage: isUserMessage)
                 } else {
                     FileAttachmentView(attachment: attachment, isUserMessage: isUserMessage)
                 }
             }
         }
+    }
+}
+
+/// View for displaying a video attachment with thumbnail and play icon
+struct VideoAttachmentView: View {
+    let attachment: MessageAttachment
+    let isUserMessage: Bool
+    
+    var body: some View {
+        ZStack {
+            // Thumbnail image
+            if let thumbnailData = attachment.thumbnailData,
+               let imageData = Data(base64Encoded: thumbnailData),
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 250, maxHeight: 250)
+                    .cornerRadius(12)
+            } else {
+                // Fallback placeholder
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.tertiarySystemBackground))
+                    .frame(width: 200, height: 150)
+            }
+            
+            // Play icon overlay
+            Circle()
+                .fill(Color.black.opacity(0.6))
+                .frame(width: 50, height: 50)
+                .overlay(
+                    Image(systemName: "play.fill")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .offset(x: 2)
+                )
+            
+            // Video badge
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: "video.fill")
+                            .font(.caption2)
+                        if let size = attachment.size {
+                            Text(formatFileSize(size))
+                                .font(.caption2)
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(6)
+                    .padding(8)
+                }
+            }
+        }
+    }
+    
+    private func formatFileSize(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -1731,6 +1812,8 @@ struct FileAttachmentView: View {
         switch attachment.type {
         case .image:
             return "photo"
+        case .video:
+            return "video"
         case .document:
             return "doc"
         case .file:
@@ -1742,6 +1825,50 @@ struct FileAttachmentView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
+
+/// Thumbnail view for selected media in the input preview
+struct MediaThumbnailView: View {
+    let media: SelectedMedia
+    
+    var body: some View {
+        ZStack {
+            if let thumbnail = media.thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                // Fallback for missing thumbnail
+                Rectangle()
+                    .fill(Color(.tertiarySystemBackground))
+                    .overlay(
+                        Image(systemName: media.isVideo ? "video.fill" : "photo.fill")
+                            .foregroundColor(.secondary)
+                    )
+            }
+            
+            // Video indicator overlay
+            if media.isVideo {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white)
+                        Spacer()
+                    }
+                    .padding(4)
+                    .background(
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.6)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+            }
+        }
     }
 }
 

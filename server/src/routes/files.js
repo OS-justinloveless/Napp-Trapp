@@ -3,8 +3,39 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createTwoFilesPatch } from 'diff';
 import multer from 'multer';
+import mime from 'mime-types';
 
 const router = Router();
+
+// Helper function to detect if a buffer contains binary content
+function isBinaryBuffer(buffer) {
+  // Check first 8KB for null bytes (common indicator of binary content)
+  const checkLength = Math.min(buffer.length, 8192);
+  for (let i = 0; i < checkLength; i++) {
+    if (buffer[i] === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Known binary extensions (checked before content analysis)
+const BINARY_EXTENSIONS = new Set([
+  // Images
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'tiff', 'tif', 'heic', 'heif',
+  // Video
+  'mp4', 'mov', 'm4v', 'avi', 'webm', 'mkv', 'wmv', 'flv',
+  // Audio
+  'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma',
+  // Documents
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  // Archives
+  'zip', 'tar', 'gz', 'rar', '7z', 'bz2',
+  // Executables/Libraries
+  'exe', 'dll', 'so', 'dylib', 'bin', 'o', 'a',
+  // Other binary
+  'woff', 'woff2', 'ttf', 'otf', 'eot', 'sqlite', 'db'
+]);
 
 // Configure multer for file uploads
 // Files are stored in memory temporarily, then written to the destination
@@ -26,15 +57,33 @@ router.get('/read', async (req, res) => {
       return res.status(400).json({ error: 'File path is required' });
     }
     
-    const content = await fs.readFile(filePath, 'utf-8');
     const stats = await fs.stat(filePath);
+    const ext = path.extname(filePath).slice(1).toLowerCase();
+    const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+    
+    // Read file as buffer first to detect binary content
+    const buffer = await fs.readFile(filePath);
+    
+    // Determine if file is binary (by extension or content analysis)
+    const isBinary = BINARY_EXTENSIONS.has(ext) || isBinaryBuffer(buffer);
+    
+    let content;
+    if (isBinary) {
+      // Return base64-encoded content for binary files
+      content = buffer.toString('base64');
+    } else {
+      // Return UTF-8 text for text files
+      content = buffer.toString('utf-8');
+    }
     
     res.json({
       path: filePath,
       content,
       size: stats.size,
       modified: stats.mtime.toISOString(),
-      extension: path.extname(filePath).slice(1)
+      extension: ext,
+      isBinary,
+      mimeType
     });
   } catch (error) {
     if (error.code === 'ENOENT') {

@@ -72,6 +72,11 @@
 		F000000000000060 /* NewChatSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000060 /* NewChatSheet.swift */; };
 		F000000000000070 /* LogManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000070 /* LogManager.swift */; };
 		F000000000000071 /* LogViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000071 /* LogViewerView.swift */; };
+		F000000000000090 /* ImageViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000090 /* ImageViewerView.swift */; };
+		F000000000000091 /* VideoPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000091 /* VideoPlayerView.swift */; };
+		F000000000000092 /* AudioPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000092 /* AudioPlayerView.swift */; };
+		F000000000000093 /* BinaryFileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000093 /* BinaryFileView.swift */; };
+		F000000000000094 /* PDFViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000094 /* PDFViewerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -140,6 +145,11 @@
 		F100000000000060 /* NewChatSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewChatSheet.swift; sourceTree = "<group>"; };
 		F100000000000070 /* LogManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogManager.swift; sourceTree = "<group>"; };
 		F100000000000071 /* LogViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogViewerView.swift; sourceTree = "<group>"; };
+		F100000000000090 /* ImageViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewerView.swift; sourceTree = "<group>"; };
+		F100000000000091 /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerView.swift; sourceTree = "<group>"; };
+		F100000000000092 /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
+		F100000000000093 /* BinaryFileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BinaryFileView.swift; sourceTree = "<group>"; };
+		F100000000000094 /* PDFViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFViewerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -290,6 +300,11 @@
 				F100000000000039 /* FileComponents.swift */,
 				C100000000000002 /* HighlightedCodeView.swift */,
 				C100000000000004 /* MarkdownPreviewView.swift */,
+				F100000000000090 /* ImageViewerView.swift */,
+				F100000000000091 /* VideoPlayerView.swift */,
+				F100000000000092 /* AudioPlayerView.swift */,
+				F100000000000093 /* BinaryFileView.swift */,
+				F100000000000094 /* PDFViewerView.swift */,
 			);
 			path = Files;
 			sourceTree = "<group>";
@@ -455,6 +470,11 @@
 				A100000000000001 /* XTermWebView.swift in Sources */,
 				F000000000000017 /* FileViewerSheet.swift in Sources */,
 				F000000000000039 /* FileComponents.swift in Sources */,
+				F000000000000090 /* ImageViewerView.swift in Sources */,
+				F000000000000091 /* VideoPlayerView.swift in Sources */,
+				F000000000000092 /* AudioPlayerView.swift in Sources */,
+				F000000000000093 /* BinaryFileView.swift in Sources */,
+				F000000000000094 /* PDFViewerView.swift in Sources */,
 				F000000000000018 /* ConversationsView.swift in Sources */,
 				F000000000000060 /* NewChatSheet.swift in Sources */,
 				F000000000000019 /* SettingsView.swift in Sources */,

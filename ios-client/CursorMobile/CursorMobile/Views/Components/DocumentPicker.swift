@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import PhotosUI
+import AVFoundation
 
 /// A file selected for upload
 struct SelectedFile: Identifiable {
@@ -19,6 +20,17 @@ struct SelectedFile: Identifiable {
     /// Convert to UploadFile for API
     func toUploadFile() -> UploadFile {
         return UploadFile(filename: filename, data: data, mimeType: mimeType)
+    }
+}
+
+/// Transferable struct for loading video data from PhotosPicker
+struct VideoFileTransferable: Transferable {
+    let data: Data
+    
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .movie) { data in
+            VideoFileTransferable(data: data)
+        }
     }
 }
 
@@ -200,9 +212,9 @@ struct FileUploadSheet: View {
                 PhotosPicker(
                     selection: $photoPickerItems,
                     maxSelectionCount: 10,
-                    matching: .images
+                    matching: .any(of: [.images, .videos])
                 ) {
-                    Label("Select Images", systemImage: "photo.on.rectangle")
+                    Label("Select Media", systemImage: "photo.on.rectangle")
                         .frame(minWidth: 160)
                         .padding()
                         .background(Color.accentColor.opacity(0.8))
@@ -215,7 +227,7 @@ struct FileUploadSheet: View {
         }
         .padding()
         .onChange(of: photoPickerItems) { _, newItems in
-            loadImagesFromPicker(newItems)
+            loadMediaFromPicker(newItems)
         }
     }
     
@@ -264,13 +276,13 @@ struct FileUploadSheet: View {
                     PhotosPicker(
                         selection: $photoPickerItems,
                         maxSelectionCount: 10,
-                        matching: .images
+                        matching: .any(of: [.images, .videos])
                     ) {
-                        Label("Add Images", systemImage: "photo")
+                        Label("Add Media", systemImage: "photo")
                             .font(.caption)
                     }
                     .onChange(of: photoPickerItems) { _, newItems in
-                        loadImagesFromPicker(newItems)
+                        loadMediaFromPicker(newItems)
                     }
                 }
             } footer: {
@@ -311,7 +323,8 @@ struct FileUploadSheet: View {
         case "json": return "curlybraces"
         case "md", "txt": return "doc.text.fill"
         case "html", "css": return "globe"
-        case "png", "jpg", "jpeg", "gif", "svg": return "photo.fill"
+        case "png", "jpg", "jpeg", "gif", "svg", "heic", "webp": return "photo.fill"
+        case "mp4", "mov", "m4v", "avi", "mkv", "webm": return "video.fill"
         case "pdf": return "doc.richtext.fill"
         case "zip", "tar", "gz", "rar": return "doc.zipper"
         default: return "doc.fill"
@@ -322,29 +335,16 @@ struct FileUploadSheet: View {
         selectedFiles.removeAll { $0.id == file.id }
     }
     
-    private func loadImagesFromPicker(_ items: [PhotosPickerItem]) {
+    private func loadMediaFromPicker(_ items: [PhotosPickerItem]) {
         Task {
             for item in items {
-                do {
-                    if let data = try await item.loadTransferable(type: Data.self) {
-                        // Try to determine the image format and generate appropriate filename
-                        let (filename, mimeType) = generateImageFilenameAndMimeType(from: data)
-                        
-                        let selectedFile = SelectedFile(
-                            filename: filename,
-                            data: data,
-                            mimeType: mimeType,
-                            fileSize: data.count
-                        )
-                        
-                        await MainActor.run {
-                            selectedFiles.append(selectedFile)
-                        }
-                        
-                        print("[FileUploadSheet] Added image: \(filename) (\(data.count) bytes)")
-                    }
-                } catch {
-                    print("[FileUploadSheet] Failed to load image: \(error)")
+                // Check if it's a video
+                let isVideo = item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) || $0.conforms(to: .video) })
+                
+                if isVideo {
+                    await loadVideoFromPicker(item)
+                } else {
+                    await loadImageFromPicker(item)
                 }
             }
             
@@ -353,6 +353,69 @@ struct FileUploadSheet: View {
                 photoPickerItems = []
             }
         }
+    }
+    
+    private func loadImageFromPicker(_ item: PhotosPickerItem) async {
+        do {
+            if let data = try await item.loadTransferable(type: Data.self) {
+                // Try to determine the image format and generate appropriate filename
+                let (filename, mimeType) = generateImageFilenameAndMimeType(from: data)
+                
+                let selectedFile = SelectedFile(
+                    filename: filename,
+                    data: data,
+                    mimeType: mimeType,
+                    fileSize: data.count
+                )
+                
+                await MainActor.run {
+                    selectedFiles.append(selectedFile)
+                }
+                
+                print("[FileUploadSheet] Added image: \(filename) (\(data.count) bytes)")
+            }
+        } catch {
+            print("[FileUploadSheet] Failed to load image: \(error)")
+        }
+    }
+    
+    private func loadVideoFromPicker(_ item: PhotosPickerItem) async {
+        do {
+            if let movie = try await item.loadTransferable(type: VideoFileTransferable.self) {
+                let data = movie.data
+                let (filename, mimeType) = generateVideoFilenameAndMimeType(for: item)
+                
+                let selectedFile = SelectedFile(
+                    filename: filename,
+                    data: data,
+                    mimeType: mimeType,
+                    fileSize: data.count
+                )
+                
+                await MainActor.run {
+                    selectedFiles.append(selectedFile)
+                }
+                
+                print("[FileUploadSheet] Added video: \(filename) (\(data.count) bytes)")
+            }
+        } catch {
+            print("[FileUploadSheet] Failed to load video: \(error)")
+        }
+    }
+    
+    private func generateVideoFilenameAndMimeType(for item: PhotosPickerItem) -> (String, String) {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let randomSuffix = Int.random(in: 1000...9999)
+        
+        for contentType in item.supportedContentTypes {
+            if contentType.conforms(to: .mpeg4Movie) {
+                return ("video_\(timestamp)_\(randomSuffix).mp4", "video/mp4")
+            } else if contentType.conforms(to: .quickTimeMovie) {
+                return ("video_\(timestamp)_\(randomSuffix).mov", "video/quicktime")
+            }
+        }
+        
+        return ("video_\(timestamp)_\(randomSuffix).mp4", "video/mp4")
     }
     
     private func generateImageFilenameAndMimeType(from data: Data) -> (String, String) {

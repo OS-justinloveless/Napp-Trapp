@@ -90,6 +90,51 @@ struct FileContent: Codable {
     let size: Int
     let modified: String
     let `extension`: String
+    let isBinary: Bool?
+    let mimeType: String?
+    
+    /// Whether this file is a binary file
+    var isBinaryFile: Bool {
+        isBinary ?? false
+    }
+    
+    /// Whether this file is an image
+    var isImage: Bool {
+        let ext = `extension`.lowercased()
+        let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "tiff", "tif", "heic", "heif", "svg"]
+        return imageExtensions.contains(ext) || (mimeType?.hasPrefix("image/") ?? false)
+    }
+    
+    /// Whether this file is a video
+    var isVideo: Bool {
+        let ext = `extension`.lowercased()
+        let videoExtensions = ["mp4", "mov", "m4v", "avi", "webm", "mkv", "wmv", "flv"]
+        return videoExtensions.contains(ext) || (mimeType?.hasPrefix("video/") ?? false)
+    }
+    
+    /// Whether this file is audio
+    var isAudio: Bool {
+        let ext = `extension`.lowercased()
+        let audioExtensions = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "wma"]
+        return audioExtensions.contains(ext) || (mimeType?.hasPrefix("audio/") ?? false)
+    }
+    
+    /// Whether this file is a PDF
+    var isPDF: Bool {
+        let ext = `extension`.lowercased()
+        return ext == "pdf" || mimeType == "application/pdf"
+    }
+    
+    /// Whether this file is a non-media binary file (archives, executables, etc.)
+    var isBinaryNonMedia: Bool {
+        isBinaryFile && !isImage && !isVideo && !isAudio && !isPDF
+    }
+    
+    /// Decode base64 content to Data (for binary files)
+    var binaryData: Data? {
+        guard isBinaryFile else { return nil }
+        return Data(base64Encoded: content)
+    }
     
     var language: String {
         switch `extension`.lowercased() {

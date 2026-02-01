@@ -1,26 +1,28 @@
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
-/// Compact image picker button for the message input
+/// Compact media picker button for the message input (supports images and videos)
 struct ImagePickerButton: View {
-    @Binding var selectedImages: [SelectedImage]
-    @State private var showingImagePicker = false
+    @Binding var selectedMedia: [SelectedMedia]
+    @State private var showingMediaPicker = false
     @State private var showingCamera = false
     @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var isLoading = false
     
-    let maxImages: Int
+    let maxItems: Int
     
-    init(selectedImages: Binding<[SelectedImage]>, maxImages: Int = 5) {
-        self._selectedImages = selectedImages
-        self.maxImages = maxImages
+    init(selectedImages: Binding<[SelectedMedia]>, maxImages: Int = 5) {
+        self._selectedMedia = selectedImages
+        self.maxItems = maxImages
     }
     
     var body: some View {
         Menu {
             Button {
-                showingImagePicker = true
+                showingMediaPicker = true
             } label: {
-                Label("Photo Library", systemImage: "photo.on.rectangle")
+                Label("Photo & Video Library", systemImage: "photo.on.rectangle")
             }
             
             Button {
@@ -29,19 +31,27 @@ struct ImagePickerButton: View {
                 Label("Take Photo", systemImage: "camera")
             }
         } label: {
-            Image(systemName: selectedImages.isEmpty ? "photo" : "photo.badge.plus")
-                .font(.system(size: 20))
-                .foregroundColor(selectedImages.count >= maxImages ? .gray : .accentColor)
+            ZStack {
+                Image(systemName: selectedMedia.isEmpty ? "photo" : "photo.badge.plus")
+                    .font(.system(size: 20))
+                    .foregroundColor(selectedMedia.count >= maxItems ? .gray : .accentColor)
+                    .opacity(isLoading ? 0.3 : 1)
+                
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+            }
         }
-        .disabled(selectedImages.count >= maxImages)
+        .disabled(selectedMedia.count >= maxItems || isLoading)
         .photosPicker(
-            isPresented: $showingImagePicker,
+            isPresented: $showingMediaPicker,
             selection: $photoPickerItems,
-            maxSelectionCount: maxImages - selectedImages.count,
-            matching: .images
+            maxSelectionCount: maxItems - selectedMedia.count,
+            matching: .any(of: [.images, .videos])
         )
         .onChange(of: photoPickerItems) { _, newItems in
-            loadImages(from: newItems)
+            loadMedia(from: newItems)
         }
         .fullScreenCover(isPresented: $showingCamera) {
             CameraPicker { image in
@@ -50,26 +60,119 @@ struct ImagePickerButton: View {
         }
     }
     
-    private func loadImages(from items: [PhotosPickerItem]) {
+    private func loadMedia(from items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        
+        isLoading = true
+        
         Task {
             for item in items {
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        addImage(uiImage)
-                    }
+                // Check if it's a video
+                if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) || $0.conforms(to: .video) }) {
+                    await loadVideo(from: item)
+                } else {
+                    // It's an image
+                    await loadImage(from: item)
                 }
             }
+            
             // Clear picker items
             await MainActor.run {
                 photoPickerItems = []
+                isLoading = false
             }
         }
     }
     
+    private func loadImage(from item: PhotosPickerItem) async {
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let uiImage = UIImage(data: data) {
+            await MainActor.run {
+                addImage(uiImage)
+            }
+        }
+    }
+    
+    private func loadVideo(from item: PhotosPickerItem) async {
+        // Load video as transferable movie
+        if let movie = try? await item.loadTransferable(type: VideoTransferable.self) {
+            let videoData = movie.data
+            let thumbnail = await generateVideoThumbnail(from: videoData)
+            let duration = await getVideoDuration(from: videoData)
+            let mimeType = getMimeType(for: item)
+            
+            await MainActor.run {
+                let video = SelectedVideo(
+                    data: videoData,
+                    thumbnail: thumbnail,
+                    duration: duration,
+                    mimeType: mimeType
+                )
+                selectedMedia.append(.video(video))
+            }
+        }
+    }
+    
+    private func generateVideoThumbnail(from data: Data) async -> UIImage? {
+        // Write data to temp file to generate thumbnail
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        
+        do {
+            try data.write(to: tempURL)
+            let asset = AVURLAsset(url: tempURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 300, height: 300)
+            
+            let cgImage = try generator.copyCGImage(at: .zero, actualTime: nil)
+            try? FileManager.default.removeItem(at: tempURL)
+            return UIImage(cgImage: cgImage)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return nil
+        }
+    }
+    
+    private func getVideoDuration(from data: Data) async -> Double? {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        
+        do {
+            try data.write(to: tempURL)
+            let asset = AVURLAsset(url: tempURL)
+            let duration = try await asset.load(.duration)
+            try? FileManager.default.removeItem(at: tempURL)
+            return CMTimeGetSeconds(duration)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            return nil
+        }
+    }
+    
+    private func getMimeType(for item: PhotosPickerItem) -> String {
+        for contentType in item.supportedContentTypes {
+            if contentType.conforms(to: .mpeg4Movie) {
+                return "video/mp4"
+            } else if contentType.conforms(to: .quickTimeMovie) {
+                return "video/quicktime"
+            }
+        }
+        return "video/mp4"
+    }
+    
     private func addImage(_ uiImage: UIImage) {
         let image = SelectedImage(image: uiImage)
-        selectedImages.append(image)
+        selectedMedia.append(.image(image))
+    }
+}
+
+/// Transferable struct for loading video data
+struct VideoTransferable: Transferable {
+    let data: Data
+    
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .movie) { data in
+            VideoTransferable(data: data)
+        }
     }
 }
 

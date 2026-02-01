@@ -87,6 +87,10 @@ struct SettingsView: View {
     @State private var selectedDevice: iOSDevice?
     @State private var cleanBuild = false
     @State private var loadingDevices = false
+    @State private var deviceUnavailable = false  // Track if saved device was not found
+    
+    // UserDefaults key for persisting selected device
+    private static let savedDeviceKey = "napp-trapp-selected-device"
     
     // Server restart states
     @State private var isRestarting = false
@@ -532,6 +536,24 @@ struct SettingsView: View {
                 }
                 .foregroundColor(.primary)
                 
+                // Device unavailable warning
+                if deviceUnavailable, let device = selectedDevice {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Device Unavailable")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.orange)
+                            Text("\(device.name) is no longer available. Please select a different device.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                
                 // Clean build toggle
                 Toggle(isOn: $cleanBuild) {
                     Label("Clean Build", systemImage: "trash")
@@ -553,7 +575,7 @@ struct SettingsView: View {
                         Spacer()
                     }
                 }
-                .disabled(isBuilding)
+                .disabled(isBuilding || deviceUnavailable)
                 
                 // Build status messages
                 if let success = buildSuccess {
@@ -647,6 +669,8 @@ struct SettingsView: View {
                                         isSelected: selectedDevice?.udid == device.udid,
                                         onSelect: {
                                             selectedDevice = device
+                                            saveSelectedDevice(device)
+                                            deviceUnavailable = false
                                             showDevicePicker = false
                                         }
                                     )
@@ -666,6 +690,8 @@ struct SettingsView: View {
                                         isSelected: selectedDevice?.udid == device.udid,
                                         onSelect: {
                                             selectedDevice = device
+                                            saveSelectedDevice(device)
+                                            deviceUnavailable = false
                                             showDevicePicker = false
                                         }
                                     )
@@ -696,6 +722,8 @@ struct SettingsView: View {
             .presentationDetents([.medium, .large])
         }
         .onAppear {
+            // Load saved device first (no network call needed)
+            loadSavedDevice()
             loadData()
         }
         .alert("Icon Changed", isPresented: $showIconChangeAlert) {
@@ -726,14 +754,29 @@ struct SettingsView: View {
                 let devices = try await api.getIOSDevices()
                 await MainActor.run {
                     availableDevices = devices
-                    // If no device is selected, try to select a connected physical device first
-                    if selectedDevice == nil {
+                    
+                    // Try to validate/restore the selected device
+                    if let selected = selectedDevice {
+                        // Check if the selected device is still available
+                        if let matchingDevice = devices.first(where: { $0.udid == selected.udid }) {
+                            // Update the device info (state may have changed)
+                            selectedDevice = matchingDevice
+                            deviceUnavailable = false
+                        } else {
+                            // Device is no longer available
+                            deviceUnavailable = true
+                        }
+                    } else {
+                        // No device selected, try to select a connected physical device first
                         if let physicalDevice = devices.first(where: { $0.isPhysicalDevice }) {
                             selectedDevice = physicalDevice
+                            saveSelectedDevice(physicalDevice)
                         } else if let simulator = devices.first(where: { $0.isBooted }) {
                             selectedDevice = simulator
-                        } else {
-                            selectedDevice = devices.first
+                            saveSelectedDevice(simulator)
+                        } else if let firstDevice = devices.first {
+                            selectedDevice = firstDevice
+                            saveSelectedDevice(firstDevice)
                         }
                     }
                     loadingDevices = false
@@ -744,6 +787,32 @@ struct SettingsView: View {
                     loadingDevices = false
                 }
             }
+        }
+    }
+    
+    /// Save the selected device to UserDefaults
+    private func saveSelectedDevice(_ device: iOSDevice) {
+        do {
+            let data = try JSONEncoder().encode(device)
+            UserDefaults.standard.set(data, forKey: Self.savedDeviceKey)
+        } catch {
+            print("Failed to save selected device: \(error)")
+        }
+    }
+    
+    /// Load the previously selected device from UserDefaults
+    private func loadSavedDevice() {
+        guard let data = UserDefaults.standard.data(forKey: Self.savedDeviceKey) else {
+            return
+        }
+        
+        do {
+            let device = try JSONDecoder().decode(iOSDevice.self, from: data)
+            selectedDevice = device
+        } catch {
+            print("Failed to load saved device: \(error)")
+            // Clear invalid data
+            UserDefaults.standard.removeObject(forKey: Self.savedDeviceKey)
         }
     }
     
@@ -778,17 +847,48 @@ struct SettingsView: View {
                     if response.success {
                         buildSuccess = response.message ?? "Build successful!"
                     } else {
-                        buildError = response.error ?? response.details ?? "Unknown build error"
+                        let errorMessage = response.error ?? response.details ?? "Unknown build error"
+                        buildError = errorMessage
+                        
+                        // Check if the error is related to device unavailability
+                        if isDeviceUnavailableError(errorMessage) {
+                            deviceUnavailable = true
+                        }
                     }
                     isBuilding = false
                 }
             } catch {
                 await MainActor.run {
-                    buildError = error.localizedDescription
+                    let errorMessage = error.localizedDescription
+                    buildError = errorMessage
+                    
+                    // Check if the error is related to device unavailability
+                    if isDeviceUnavailableError(errorMessage) {
+                        deviceUnavailable = true
+                    }
                     isBuilding = false
                 }
             }
         }
+    }
+    
+    /// Check if the error message indicates the device is unavailable
+    private func isDeviceUnavailableError(_ error: String) -> Bool {
+        let lowercasedError = error.lowercased()
+        let deviceUnavailablePatterns = [
+            "device not found",
+            "device unavailable",
+            "simulator not found",
+            "no matching destination",
+            "unable to find a destination",
+            "no device matching",
+            "device is not available",
+            "could not find a device",
+            "invalid device",
+            "unknown device"
+        ]
+        
+        return deviceUnavailablePatterns.contains { lowercasedError.contains($0) }
     }
     
     private func restartServer() {
