@@ -22,7 +22,8 @@ struct GitRepoSection: View {
     @State private var showUntrackedDiffSheet = false
     @State private var isPushing = false
     @State private var isPulling = false
-    @State private var operationMessage: String?
+    @State private var operationError: String?
+    @State private var toastData: ToastData?
     @State private var githubURL: URL?
     
     // Section collapse states
@@ -164,13 +165,14 @@ struct GitRepoSection: View {
                 GitDiffSheet(project: project, untrackedFilePath: filePath, repoPath: repoPath)
             }
         }
-        .alert("Git Operation", isPresented: .init(
-            get: { operationMessage != nil },
-            set: { if !$0 { operationMessage = nil } }
+        .toast($toastData)
+        .alert("Git Error", isPresented: .init(
+            get: { operationError != nil },
+            set: { if !$0 { operationError = nil } }
         )) {
-            Button("OK") { operationMessage = nil }
+            Button("OK") { operationError = nil }
         } message: {
-            if let message = operationMessage {
+            if let message = operationError {
                 Text(message)
             }
         }
@@ -652,7 +654,7 @@ struct GitRepoSection: View {
             _ = try await api.gitStage(projectId: project.id, files: [path], repoPath: repoPath)
             await loadStatus()
         } catch {
-            operationMessage = "Failed to stage: \(error.localizedDescription)"
+            operationError = "Failed to stage: \(error.localizedDescription)"
         }
     }
     
@@ -663,7 +665,7 @@ struct GitRepoSection: View {
             _ = try await api.gitUnstage(projectId: project.id, files: [path], repoPath: repoPath)
             await loadStatus()
         } catch {
-            operationMessage = "Failed to unstage: \(error.localizedDescription)"
+            operationError = "Failed to unstage: \(error.localizedDescription)"
         }
     }
     
@@ -674,7 +676,7 @@ struct GitRepoSection: View {
             _ = try await api.gitStage(projectId: project.id, files: paths, repoPath: repoPath)
             await loadStatus()
         } catch {
-            operationMessage = "Failed to stage files: \(error.localizedDescription)"
+            operationError = "Failed to stage files: \(error.localizedDescription)"
         }
     }
     
@@ -685,7 +687,7 @@ struct GitRepoSection: View {
             _ = try await api.gitUnstage(projectId: project.id, files: paths, repoPath: repoPath)
             await loadStatus()
         } catch {
-            operationMessage = "Failed to unstage files: \(error.localizedDescription)"
+            operationError = "Failed to unstage files: \(error.localizedDescription)"
         }
     }
     
@@ -709,7 +711,7 @@ struct GitRepoSection: View {
             
             await loadStatus()
         } catch {
-            operationMessage = "Failed to undo: \(error.localizedDescription)"
+            operationError = "Failed to undo: \(error.localizedDescription)"
         }
     }
     
@@ -718,11 +720,11 @@ struct GitRepoSection: View {
         
         isPushing = true
         do {
-            let result = try await api.gitPush(projectId: project.id, repoPath: repoPath)
-            operationMessage = result.output ?? "Push successful"
+            _ = try await api.gitPush(projectId: project.id, repoPath: repoPath)
+            toastData = .success("Push successful")
             await loadStatus()
         } catch {
-            operationMessage = "Push failed: \(error.localizedDescription)"
+            operationError = "Push failed: \(error.localizedDescription)"
         }
         isPushing = false
     }
@@ -732,11 +734,11 @@ struct GitRepoSection: View {
         
         isPulling = true
         do {
-            let result = try await api.gitPull(projectId: project.id, repoPath: repoPath)
-            operationMessage = result.output ?? "Pull successful"
+            _ = try await api.gitPull(projectId: project.id, repoPath: repoPath)
+            toastData = .success("Pull successful")
             await loadStatus()
         } catch {
-            operationMessage = "Pull failed: \(error.localizedDescription)"
+            operationError = "Pull failed: \(error.localizedDescription)"
         }
         isPulling = false
     }

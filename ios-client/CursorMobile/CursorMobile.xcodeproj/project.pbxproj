@@ -22,6 +22,7 @@
 		C000000000000010 /* Grammars in Resources */ = {isa = PBXBuildFile; fileRef = C100000000000010 /* Grammars */; };
 		C000000000000011 /* Themes in Resources */ = {isa = PBXBuildFile; fileRef = C100000000000011 /* Themes */; };
 		D000000000000001 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000001 /* FloatingTabBar.swift */; };
+		D000000000000002 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000002 /* ToastView.swift */; };
 		E000000000000020 /* AppIconForest@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000020 /* AppIconForest@2x.png */; };
 		E000000000000021 /* AppIconForest@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000021 /* AppIconForest@3x.png */; };
 		E000000000000022 /* AppIconDesert@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E100000000000022 /* AppIconDesert@2x.png */; };
@@ -93,6 +94,7 @@
 		C100000000000010 /* Grammars */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Grammars; sourceTree = "<group>"; };
 		C100000000000011 /* Themes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Themes; sourceTree = "<group>"; };
 		D100000000000001 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
+		D100000000000002 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		E100000000000020 /* AppIconForest@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconForest@2x.png"; sourceTree = "<group>"; };
 		E100000000000021 /* AppIconForest@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconForest@3x.png"; sourceTree = "<group>"; };
 		E100000000000022 /* AppIconDesert@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIconDesert@2x.png"; sourceTree = "<group>"; };
@@ -335,6 +337,7 @@
 				F100000000000080 /* DocumentPicker.swift */,
 				F100000000000038 /* ImagePicker.swift */,
 				D100000000000001 /* FloatingTabBar.swift */,
+				D100000000000002 /* ToastView.swift */,
 				F100000000000051 /* SuggestionOverlay.swift */,
 			);
 			path = Components;
@@ -499,6 +502,7 @@
 				C000000000000004 /* MarkdownPreviewView.swift in Sources */,
 				C000000000000003 /* SyntaxSettingsView.swift in Sources */,
 				D000000000000001 /* FloatingTabBar.swift in Sources */,
+				D000000000000002 /* ToastView.swift in Sources */,
 				F000000000000050 /* Suggestion.swift in Sources */,
 				F000000000000051 /* SuggestionOverlay.swift in Sources */,
 			);
