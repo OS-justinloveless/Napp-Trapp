@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PhotosUI
 
 /// A file selected for upload
 struct SelectedFile: Identifiable {
@@ -63,14 +64,15 @@ struct DocumentPicker: UIViewControllerRepresentable {
             var selectedFiles: [SelectedFile] = []
             
             for url in urls {
-                // Start accessing the security-scoped resource
-                guard url.startAccessingSecurityScopedResource() else {
-                    print("[DocumentPicker] Failed to access security-scoped resource: \(url)")
-                    continue
-                }
+                // Try to start accessing security-scoped resource
+                // With asCopy: true, this will return false since copied files aren't security-scoped
+                // We still try to read the file regardless
+                let hasSecurityAccess = url.startAccessingSecurityScopedResource()
                 
                 defer {
-                    url.stopAccessingSecurityScopedResource()
+                    if hasSecurityAccess {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                 }
                 
                 do {
@@ -86,14 +88,13 @@ struct DocumentPicker: UIViewControllerRepresentable {
                     )
                     selectedFiles.append(selectedFile)
                     
-                    print("[DocumentPicker] Selected file: \(filename) (\(data.count) bytes)")
+                    print("[DocumentPicker] Selected file: \(filename) (\(data.count) bytes, securityScoped: \(hasSecurityAccess))")
                 } catch {
                     print("[DocumentPicker] Failed to read file \(url): \(error)")
                 }
             }
             
             parent.onFilesSelected(selectedFiles)
-            parent.dismiss()
         }
         
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
@@ -112,6 +113,8 @@ struct FileUploadSheet: View {
     
     @State private var selectedFiles: [SelectedFile] = []
     @State private var showDocumentPicker = false
+    @State private var showImagePicker = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var isUploading = false
     @State private var uploadError: String?
     @State private var uploadResult: UploadFilesResponse?
@@ -182,19 +185,38 @@ struct FileUploadSheet: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
-            Button {
-                showDocumentPicker = true
-            } label: {
-                Label("Select Files", systemImage: "folder")
-                    .padding()
-                    .background(Color.accentColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+            VStack(spacing: 12) {
+                Button {
+                    showDocumentPicker = true
+                } label: {
+                    Label("Select Files", systemImage: "folder")
+                        .frame(minWidth: 160)
+                        .padding()
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                
+                PhotosPicker(
+                    selection: $photoPickerItems,
+                    maxSelectionCount: 10,
+                    matching: .images
+                ) {
+                    Label("Select Images", systemImage: "photo.on.rectangle")
+                        .frame(minWidth: 160)
+                        .padding()
+                        .background(Color.accentColor.opacity(0.8))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
             }
             
             Spacer()
         }
         .padding()
+        .onChange(of: photoPickerItems) { _, newItems in
+            loadImagesFromPicker(newItems)
+        }
     }
     
     private var fileList: some View {
@@ -228,11 +250,27 @@ struct FileUploadSheet: View {
                 HStack {
                     Text("Selected Files (\(selectedFiles.count))")
                     Spacer()
-                    Button {
-                        showDocumentPicker = true
+                    Menu {
+                        Button {
+                            showDocumentPicker = true
+                        } label: {
+                            Label("Add Files", systemImage: "folder")
+                        }
                     } label: {
                         Label("Add More", systemImage: "plus")
                             .font(.caption)
+                    }
+                    
+                    PhotosPicker(
+                        selection: $photoPickerItems,
+                        maxSelectionCount: 10,
+                        matching: .images
+                    ) {
+                        Label("Add Images", systemImage: "photo")
+                            .font(.caption)
+                    }
+                    .onChange(of: photoPickerItems) { _, newItems in
+                        loadImagesFromPicker(newItems)
                     }
                 }
             } footer: {
@@ -282,6 +320,79 @@ struct FileUploadSheet: View {
     
     private func removeFile(_ file: SelectedFile) {
         selectedFiles.removeAll { $0.id == file.id }
+    }
+    
+    private func loadImagesFromPicker(_ items: [PhotosPickerItem]) {
+        Task {
+            for item in items {
+                do {
+                    if let data = try await item.loadTransferable(type: Data.self) {
+                        // Try to determine the image format and generate appropriate filename
+                        let (filename, mimeType) = generateImageFilenameAndMimeType(from: data)
+                        
+                        let selectedFile = SelectedFile(
+                            filename: filename,
+                            data: data,
+                            mimeType: mimeType,
+                            fileSize: data.count
+                        )
+                        
+                        await MainActor.run {
+                            selectedFiles.append(selectedFile)
+                        }
+                        
+                        print("[FileUploadSheet] Added image: \(filename) (\(data.count) bytes)")
+                    }
+                } catch {
+                    print("[FileUploadSheet] Failed to load image: \(error)")
+                }
+            }
+            
+            // Clear picker items
+            await MainActor.run {
+                photoPickerItems = []
+            }
+        }
+    }
+    
+    private func generateImageFilenameAndMimeType(from data: Data) -> (String, String) {
+        // Check magic bytes to determine image format
+        let bytes = [UInt8](data.prefix(12))
+        
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let randomSuffix = Int.random(in: 1000...9999)
+        
+        if bytes.count >= 8 {
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
+                return ("image_\(timestamp)_\(randomSuffix).png", "image/png")
+            }
+            
+            // JPEG: FF D8 FF
+            if bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+                return ("image_\(timestamp)_\(randomSuffix).jpg", "image/jpeg")
+            }
+            
+            // GIF: 47 49 46 38
+            if bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38 {
+                return ("image_\(timestamp)_\(randomSuffix).gif", "image/gif")
+            }
+            
+            // WebP: RIFF....WEBP
+            if bytes.count >= 12 &&
+               bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+               bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50 {
+                return ("image_\(timestamp)_\(randomSuffix).webp", "image/webp")
+            }
+            
+            // HEIC: Check for ftyp box with heic/heix brand
+            if bytes.count >= 12 && bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70 {
+                return ("image_\(timestamp)_\(randomSuffix).heic", "image/heic")
+            }
+        }
+        
+        // Default to JPEG if we can't determine the format
+        return ("image_\(timestamp)_\(randomSuffix).jpg", "image/jpeg")
     }
     
     private func uploadFiles() {
