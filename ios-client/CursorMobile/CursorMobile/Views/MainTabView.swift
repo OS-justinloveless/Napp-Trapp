@@ -21,6 +21,9 @@ struct MainTabView: View {
     // Track if we've attempted to restore the last project
     @State private var hasAttemptedProjectRestore = false
     
+    // Settings sheet
+    @State private var showSettings = false
+    
     // Drawer width
     private let drawerWidth: CGFloat = 280
     
@@ -150,22 +153,35 @@ struct MainTabView: View {
             
             // Floating tab bar and FAB overlay - hide when in terminal view
             if !isTerminalViewActive {
-                HStack(alignment: .bottom, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
                     FloatingTabBar(selectedTab: $selectedTab)
                     FloatingActionButton {
                         showNewChatSheet = true
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
             }
         }
+        .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showNewChatSheet) {
             NewChatSheet(project: project) { chatId, initialMessage, modelId, mode in
                 newChatModelId = modelId
                 newChatMode = mode
                 selectedTab = 3  // Switch to chat tab
                 newChatId = chatId
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                showSettings = false
+                            }
+                        }
+                    }
             }
         }
     }
@@ -175,7 +191,6 @@ struct MainTabView: View {
     private func filesTab(project: Project) -> some View {
         NavigationStack {
             ProjectFilesView(project: project)
-                .navigationTitle("Files")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
@@ -222,7 +237,6 @@ struct MainTabView: View {
     private func chatTab(project: Project) -> some View {
         NavigationStack {
             ProjectConversationsView(project: project)
-                .navigationTitle("Chat")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
@@ -335,10 +349,18 @@ struct MainTabView: View {
                 .foregroundColor(.secondary)
 
             Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color(.systemGroupedBackground))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showSettings = true
+        }
     }
 
     // MARK: - Project Restoration
@@ -505,20 +527,20 @@ private struct MainTabViewWithProject: View {
                 }
             }
             
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 FloatingTabBar(selectedTab: $selectedTab)
                 FloatingActionButton { }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 2)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
         }
+        .ignoresSafeArea(edges: .bottom)
     }
     
     private func filesTab(project: Project) -> some View {
         NavigationStack {
             // Preview with dummy file data
             PreviewFilesView(project: project)
-                .navigationTitle("Files")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
@@ -561,7 +583,6 @@ private struct MainTabViewWithProject: View {
     private func chatTab(project: Project) -> some View {
         NavigationStack {
             ProjectConversationsView(project: project)
-                .navigationTitle("Chat")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton

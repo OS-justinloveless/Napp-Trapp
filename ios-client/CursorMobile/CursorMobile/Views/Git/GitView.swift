@@ -234,7 +234,6 @@ struct GitView: View {
                 repositoriesListView
             }
         }
-        .navigationTitle("Git")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {

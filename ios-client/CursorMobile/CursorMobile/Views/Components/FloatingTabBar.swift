@@ -30,11 +30,11 @@ struct FloatingTabBar: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .background(
             Capsule()
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
         )
     }
 }
@@ -73,11 +73,15 @@ struct FloatingActionButton: View {
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(Color.white)
-                .frame(width: 56, height: 56)
+                .frame(width: 64, height: 64)
                 .background(
-                    Circle()
-                        .fill(Color.accentColor)
-                        .shadow(color: Color.accentColor.opacity(0.4), radius: 8, x: 0, y: 4)
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.85))
+                    }
+                    .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
                 )
         }
         .buttonStyle(.plain)
@@ -92,12 +96,12 @@ struct FloatingActionButton: View {
         VStack {
             Spacer()
             
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 FloatingTabBar(selectedTab: .constant(0))
                 FloatingActionButton(action: {})
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 0)
         }
     }
 }

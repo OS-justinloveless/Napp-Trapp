@@ -203,6 +203,8 @@ struct ProjectFilesView: View {
                 }
             }
         }
+        .listSectionSpacing(.compact)
+        .contentMargins(.top, 8, for: .scrollContent)
         .onChange(of: selectedItem) { _, newValue in
             if let item = newValue {
                 selectedItem = nil  // Reset selection

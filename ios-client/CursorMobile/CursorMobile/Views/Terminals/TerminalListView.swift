@@ -46,7 +46,6 @@ struct TerminalListView: View {
                 terminalList
             }
         }
-        .navigationTitle("Terminals")
         .navigationDestination(item: $selectedTerminal) { terminal in
             TerminalView(terminal: terminal, project: project)
         }
