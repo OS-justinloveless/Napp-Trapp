@@ -30,6 +30,12 @@ class WebSocketManager: ObservableObject {
     private var terminalCreatedHandler: ((Terminal) -> Void)?
     private var terminalClosedHandler: ((String) -> Void)?
     
+    // Chat session support
+    private var chatContentBlockHandlers: [String: ([ChatContentBlock]) -> Void] = [:]
+    private var chatRawDataHandlers: [String: (String) -> Void] = [:]
+    private var chatSessionEventHandlers: [String: (ChatSessionEvent) -> Void] = [:]
+    private var chatErrorHandlers: [String: (String) -> Void] = [:]
+    
     func connect(serverUrl: String, token: String) {
         self.serverUrl = serverUrl
         self.token = token
@@ -53,6 +59,12 @@ class WebSocketManager: ObservableObject {
         // Clear terminal handlers to release any captured references
         terminalOutputHandlers.removeAll()
         terminalErrorHandlers.removeAll()
+        
+        // Clear chat handlers
+        chatContentBlockHandlers.removeAll()
+        chatRawDataHandlers.removeAll()
+        chatSessionEventHandlers.removeAll()
+        chatErrorHandlers.removeAll()
         
         isConnected = false
     }
@@ -228,6 +240,112 @@ class WebSocketManager: ObservableObject {
                     print("WebSocket: Terminal closed - \(terminalId)")
                 }
                 
+            // MARK: - Chat Session Messages
+                
+            case "chatAttached":
+                if let conversationId = json["conversationId"] as? String {
+                    let event = ChatSessionEvent(
+                        type: "chatAttached",
+                        conversationId: conversationId,
+                        reason: nil,
+                        tool: json["tool"] as? String,
+                        isNew: json["isNew"] as? Bool,
+                        workspacePath: json["workspacePath"] as? String,
+                        message: json["message"] as? String,
+                        messageId: nil
+                    )
+                    chatSessionEventHandlers[conversationId]?(event)
+                    print("WebSocket: Chat attached - \(conversationId)")
+                }
+                
+            case "chatContentBlocks":
+                if let conversationId = json["conversationId"] as? String,
+                   let blocksData = json["blocks"] as? [[String: Any]] {
+                    // Parse content blocks
+                    do {
+                        let jsonData = try JSONSerialization.data(withJSONObject: blocksData)
+                        let blocks = try JSONDecoder().decode([ChatContentBlock].self, from: jsonData)
+                        chatContentBlockHandlers[conversationId]?(blocks)
+                    } catch {
+                        print("WebSocket: Failed to parse content blocks - \(error)")
+                    }
+                }
+                
+            case "chatData":
+                if let conversationId = json["conversationId"] as? String,
+                   let data = json["data"] as? String {
+                    chatRawDataHandlers[conversationId]?(data)
+                }
+                
+            case "chatMessageSent":
+                if let conversationId = json["conversationId"] as? String {
+                    let event = ChatSessionEvent(
+                        type: "chatMessageSent",
+                        conversationId: conversationId,
+                        reason: nil,
+                        tool: nil,
+                        isNew: nil,
+                        workspacePath: nil,
+                        message: nil,
+                        messageId: json["messageId"] as? String
+                    )
+                    chatSessionEventHandlers[conversationId]?(event)
+                }
+                
+            case "chatSessionSuspended":
+                if let conversationId = json["conversationId"] as? String {
+                    let event = ChatSessionEvent(
+                        type: "chatSessionSuspended",
+                        conversationId: conversationId,
+                        reason: json["reason"] as? String,
+                        tool: nil,
+                        isNew: nil,
+                        workspacePath: nil,
+                        message: nil,
+                        messageId: nil
+                    )
+                    chatSessionEventHandlers[conversationId]?(event)
+                    print("WebSocket: Chat session suspended - \(conversationId)")
+                }
+                
+            case "chatSessionEnded":
+                if let conversationId = json["conversationId"] as? String {
+                    let event = ChatSessionEvent(
+                        type: "chatSessionEnded",
+                        conversationId: conversationId,
+                        reason: json["reason"] as? String,
+                        tool: nil,
+                        isNew: nil,
+                        workspacePath: nil,
+                        message: nil,
+                        messageId: nil
+                    )
+                    chatSessionEventHandlers[conversationId]?(event)
+                    print("WebSocket: Chat session ended - \(conversationId)")
+                }
+                
+            case "chatCancelled":
+                if let conversationId = json["conversationId"] as? String {
+                    let event = ChatSessionEvent(
+                        type: "chatCancelled",
+                        conversationId: conversationId,
+                        reason: nil,
+                        tool: nil,
+                        isNew: nil,
+                        workspacePath: nil,
+                        message: json["message"] as? String,
+                        messageId: nil
+                    )
+                    chatSessionEventHandlers[conversationId]?(event)
+                }
+                
+            case "chatError":
+                if let conversationId = json["conversationId"] as? String,
+                   let message = json["message"] as? String {
+                    chatErrorHandlers[conversationId]?(message)
+                    print("WebSocket: Chat error - \(message)")
+                }
+                
             default:
                 break
             }
@@ -335,5 +453,92 @@ class WebSocketManager: ObservableObject {
             "terminalId": terminalId
         ])
         print("WebSocket: Killing terminal \(terminalId)")
+    }
+    
+    // MARK: - Chat Session Methods
+    
+    /// Attach to a chat conversation's CLI session
+    /// - Parameters:
+    ///   - conversationId: The conversation ID
+    ///   - workspaceId: Optional workspace ID for project context
+    ///   - onContentBlocks: Handler for parsed content blocks
+    ///   - onRawData: Handler for raw terminal output (optional)
+    ///   - onSessionEvent: Handler for session events (attached, suspended, ended)
+    ///   - onError: Handler for errors
+    func attachChat(
+        _ conversationId: String,
+        workspaceId: String? = nil,
+        onContentBlocks: @escaping ([ChatContentBlock]) -> Void,
+        onRawData: ((String) -> Void)? = nil,
+        onSessionEvent: @escaping (ChatSessionEvent) -> Void,
+        onError: @escaping (String) -> Void
+    ) {
+        chatContentBlockHandlers[conversationId] = onContentBlocks
+        chatRawDataHandlers[conversationId] = onRawData ?? { _ in }
+        chatSessionEventHandlers[conversationId] = onSessionEvent
+        chatErrorHandlers[conversationId] = onError
+        
+        var message: [String: Any] = [
+            "type": "chatAttach",
+            "conversationId": conversationId
+        ]
+        if let workspaceId = workspaceId {
+            message["workspaceId"] = workspaceId
+        }
+        send(message)
+        print("WebSocket: Attaching to chat \(conversationId)")
+    }
+    
+    /// Detach from a chat conversation
+    func detachChat(_ conversationId: String) {
+        chatContentBlockHandlers.removeValue(forKey: conversationId)
+        chatRawDataHandlers.removeValue(forKey: conversationId)
+        chatSessionEventHandlers.removeValue(forKey: conversationId)
+        chatErrorHandlers.removeValue(forKey: conversationId)
+        
+        send([
+            "type": "chatDetach",
+            "conversationId": conversationId
+        ])
+        print("WebSocket: Detaching from chat \(conversationId)")
+    }
+    
+    /// Send a message to a chat conversation
+    func sendChatMessage(_ conversationId: String, content: String, workspaceId: String? = nil) {
+        var message: [String: Any] = [
+            "type": "chatMessage",
+            "conversationId": conversationId,
+            "content": content
+        ]
+        if let workspaceId = workspaceId {
+            message["workspaceId"] = workspaceId
+        }
+        send(message)
+        print("WebSocket: Sending chat message to \(conversationId)")
+    }
+    
+    /// Cancel/interrupt a chat session (sends Ctrl+C)
+    func cancelChat(_ conversationId: String) {
+        send([
+            "type": "chatCancel",
+            "conversationId": conversationId
+        ])
+        print("WebSocket: Cancelling chat \(conversationId)")
+    }
+    
+    /// Send approval response to a chat session
+    func sendChatApproval(_ conversationId: String, blockId: String, approved: Bool) {
+        // For now, send as input 'y' or 'n' since CLIs typically expect this
+        let response = approved ? "y" : "n"
+        sendChatInput(conversationId, input: response)
+    }
+    
+    /// Send raw input to a chat session
+    func sendChatInput(_ conversationId: String, input: String) {
+        send([
+            "type": "chatMessage",
+            "conversationId": conversationId,
+            "content": input
+        ])
     }
 }

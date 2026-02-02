@@ -15,7 +15,7 @@ SIMULATOR_OS ?= 18.5
 SIMULATOR_DEST = platform=iOS Simulator,name=$(SIMULATOR),OS=$(SIMULATOR_OS)
 DEVICE_DEST = generic/platform=iOS
 
-.PHONY: all build build-release run clean install list-simulators list-devices help
+.PHONY: all build build-release run clean install list-simulators list-devices help debug status screenshot logs crash-logs reinstall
 
 # Default target
 all: build
@@ -120,13 +120,56 @@ archive:
 		-allowProvisioningUpdates \
 		archive
 
+# ==========================================
+# Debugging Commands
+# ==========================================
+
+# Show simulator status
+status:
+	@./scripts/debug.sh status
+
+# Take a screenshot
+screenshot:
+	@./scripts/debug.sh screenshot
+
+# Stream logs (30 seconds)
+logs:
+	@./scripts/debug.sh logs stream 30
+
+# Capture logs to file (60 seconds)
+logs-capture:
+	@./scripts/debug.sh logs capture 60
+
+# Check crash logs
+crash-logs:
+	@./scripts/debug.sh crash-logs
+
+# Get app info
+app-info:
+	@./scripts/debug.sh app-info
+
+# Reinstall app (preserves data)
+reinstall: build
+	@./scripts/debug.sh reinstall
+
+# Clean reinstall (removes data)
+clean-reinstall: build
+	@./scripts/debug.sh clean-reinstall
+
+# Build, reinstall, and screenshot (full debug cycle)
+debug: build reinstall screenshot
+
+# ==========================================
+# Help
+# ==========================================
+
 # Help
 help:
 	@echo "Napp Trapp iOS App - Build Commands"
 	@echo ""
 	@echo "Usage: make [target] [SIMULATOR='iPhone Name'] [SIMULATOR_OS='18.5']"
 	@echo ""
-	@echo "Targets:"
+	@echo "Build Targets:"
 	@echo "  build            Build for simulator (debug)"
 	@echo "  build-release    Build for simulator (release)"
 	@echo "  build-device     Build for physical device"
@@ -135,6 +178,19 @@ help:
 	@echo "  clean            Clean build artifacts"
 	@echo "  test             Run unit tests"
 	@echo "  archive          Create release archive"
+	@echo ""
+	@echo "Debug Targets:"
+	@echo "  status           Show simulator and app status"
+	@echo "  screenshot       Capture simulator screenshot"
+	@echo "  logs             Stream app logs (30 seconds)"
+	@echo "  logs-capture     Capture logs to file (60 seconds)"
+	@echo "  crash-logs       Show crash logs for the app"
+	@echo "  app-info         Show app container and data info"
+	@echo "  reinstall        Build and reinstall app"
+	@echo "  clean-reinstall  Build and clean reinstall (clears data)"
+	@echo "  debug            Full debug cycle: build, reinstall, screenshot"
+	@echo ""
+	@echo "Info Targets:"
 	@echo "  list-simulators  Show available simulators"
 	@echo "  list-devices     Show connected devices"
 	@echo "  show-settings    Show Xcode build settings"
@@ -143,5 +199,6 @@ help:
 	@echo "Examples:"
 	@echo "  make build"
 	@echo "  make run SIMULATOR='iPhone 16' SIMULATOR_OS='18.5'"
-	@echo "  make run SIMULATOR='iPhone 17 Pro' SIMULATOR_OS='26.2'"
+	@echo "  make debug         # Build, install, and screenshot"
+	@echo "  make logs          # Stream app logs"
 	@echo "  make clean && make build"

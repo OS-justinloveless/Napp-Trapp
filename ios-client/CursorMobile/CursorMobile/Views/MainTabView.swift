@@ -16,6 +16,7 @@ struct MainTabView: View {
     @State private var newChatId: String?
     @State private var newChatModelId: String?
     @State private var newChatMode: ChatMode = .agent
+    @State private var newInitialMessage: String = ""
     @State private var showNewChatSheet = false
     
     // Track if we've attempted to restore the last project
@@ -168,6 +169,7 @@ struct MainTabView: View {
             NewChatSheet(project: project) { chatId, initialMessage, modelId, mode in
                 newChatModelId = modelId
                 newChatMode = mode
+                newInitialMessage = initialMessage
                 selectedTab = 3  // Switch to chat tab
                 newChatId = chatId
             }
@@ -246,7 +248,7 @@ struct MainTabView: View {
                     Color.clear.frame(height: 80)
                 }
                 .navigationDestination(item: $newChatId) { chatId in
-                    ConversationDetailView(
+                    ChatSessionView(
                         conversation: Conversation(
                             id: chatId,
                             type: "chat",
@@ -263,8 +265,8 @@ struct MainTabView: View {
                             readOnlyReason: nil,
                             canFork: false
                         ),
-                        initialModelId: newChatModelId,
-                        initialMode: newChatMode
+                        workspaceId: project.id,
+                        initialMessage: newInitialMessage
                     )
                 }
         }
@@ -383,9 +385,6 @@ struct MainTabView: View {
                 
                 // Find the last project by ID
                 if let lastProject = projects.first(where: { $0.id == lastProjectId }) {
-                    // Open project on server
-                    try await api.openProject(id: lastProject.id)
-                    
                     await MainActor.run {
                         selectedProject = lastProject
                         print("[MainTabView] Restored last project: \(lastProject.name)")

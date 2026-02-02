@@ -31,6 +31,7 @@ Thumbs.db
 
 # iOS/Xcode
 ios-client/build/
+ios-client/debug-output/
 **/xcuserdata/
 **/DerivedData/
 *.xcuserstate

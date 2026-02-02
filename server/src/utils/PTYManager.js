@@ -59,7 +59,8 @@ export class PTYManager {
    * Spawn a new terminal session
    * @param {object} options - Options for the terminal
    * @param {string} options.cwd - Working directory (defaults to home)
-   * @param {string} options.shell - Shell to use (defaults to user's shell)
+   * @param {string} options.shell - Shell or executable to use (defaults to user's shell)
+   * @param {Array} options.args - Arguments to pass to shell/executable (defaults to [])
    * @param {number} options.cols - Number of columns (defaults to 80)
    * @param {number} options.rows - Number of rows (defaults to 24)
    * @param {object} options.env - Additional environment variables
@@ -68,11 +69,12 @@ export class PTYManager {
   spawnTerminal(options = {}) {
     const id = `pty-${this.nextId++}`;
     const shell = options.shell || this.getDefaultShell();
+    const args = options.args || [];
     const cwd = options.cwd || os.homedir();
     const cols = options.cols || 80;
     const rows = options.rows || 24;
 
-    console.log(`[PTYManager] Spawning terminal with shell: ${shell}, cwd: ${cwd}`);
+    console.log(`[PTYManager] Spawning terminal with shell: ${shell}, args: ${JSON.stringify(args)}, cwd: ${cwd}`);
 
     // Verify shell exists and is executable
     try {
@@ -106,7 +108,7 @@ export class PTYManager {
     // Spawn the PTY process
     let ptyProcess;
     try {
-      ptyProcess = pty.spawn(shell, [], {
+      ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols,
         rows,
@@ -117,7 +119,7 @@ export class PTYManager {
       console.error(`[PTYManager] pty.spawn failed:`, spawnError);
       // Try with minimal options
       console.log(`[PTYManager] Retrying with minimal options...`);
-      ptyProcess = pty.spawn(shell, [], {
+      ptyProcess = pty.spawn(shell, args, {
         cols,
         rows,
         cwd
@@ -128,6 +130,7 @@ export class PTYManager {
       id,
       pid: ptyProcess.pid,
       shell,
+      args,
       cwd,
       cols,
       rows,
@@ -178,6 +181,7 @@ export class PTYManager {
       name: this.generateTerminalName(cwd, shell),
       pid: ptyProcess.pid,
       shell,
+      args,
       cwd,
       cols,
       rows,

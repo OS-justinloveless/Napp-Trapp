@@ -429,10 +429,46 @@ struct SettingsView: View {
                         .foregroundColor(.primary)
                     }
                 }
+                
+                // Chat View Style picker
+                HStack {
+                    Label("Chat Design", systemImage: "text.bubble")
+                    Spacer()
+                    Menu {
+                        ForEach(ChatViewStyle.allCases) { style in
+                            Button {
+                                chatSettings.chatViewStyle = style
+                            } label: {
+                                HStack {
+                                    Image(systemName: style.icon)
+                                    VStack(alignment: .leading) {
+                                        Text(style.displayName)
+                                        Text(style.description)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    if chatSettings.chatViewStyle == style {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: chatSettings.chatViewStyle.icon)
+                                .font(.caption)
+                            Text(chatSettings.chatViewStyle.displayName)
+                                .font(.subheadline)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.primary)
+                    }
+                }
             } header: {
                 Text("Chat Defaults")
             } footer: {
-                Text("These settings apply to all new chats. You can override them when creating a chat.")
+                Text("These settings apply to all new chats. Terminal design shows CLI-style output with tool calls and diffs.")
             }
             
             // Appearance / Theme Section

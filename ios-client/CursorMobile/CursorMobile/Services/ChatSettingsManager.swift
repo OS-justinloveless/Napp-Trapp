@@ -1,5 +1,36 @@
 import Foundation
 
+// MARK: - Chat View Style
+
+/// Controls which chat UI design to use
+enum ChatViewStyle: String, CaseIterable, Identifiable, Codable {
+    case classic = "classic"       // Traditional chat bubble design
+    case terminal = "terminal"     // CLI terminal-like output with parsed content blocks
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .classic: return "Classic"
+        case .terminal: return "Terminal"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .classic: return "Traditional chat bubble design"
+        case .terminal: return "CLI-style output with tool calls and diffs"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .classic: return "bubble.left.and.bubble.right"
+        case .terminal: return "terminal"
+        }
+    }
+}
+
 // MARK: - Permission Mode
 
 /// Controls how the agent handles tool approvals
@@ -47,6 +78,7 @@ class ChatSettingsManager: ObservableObject {
         static let defaultModelId = "chatDefaultModelId"
         static let defaultMode = "chatDefaultMode"
         static let defaultPermissionMode = "chatDefaultPermissionMode"
+        static let chatViewStyle = "chatViewStyle"
     }
     
     // MARK: - Published Properties
@@ -76,6 +108,13 @@ class ChatSettingsManager: ObservableObject {
         }
     }
     
+    /// Chat view style (classic bubbles vs terminal-style output)
+    @Published var chatViewStyle: ChatViewStyle {
+        didSet {
+            UserDefaults.standard.set(chatViewStyle.rawValue, forKey: Keys.chatViewStyle)
+        }
+    }
+    
     // MARK: - Cached Models
     
     /// Cached available models for settings display
@@ -102,6 +141,14 @@ class ChatSettingsManager: ObservableObject {
             self.defaultPermissionMode = permission
         } else {
             self.defaultPermissionMode = .yesAll
+        }
+        
+        // Load chat view style
+        if let styleRaw = UserDefaults.standard.string(forKey: Keys.chatViewStyle),
+           let style = ChatViewStyle(rawValue: styleRaw) {
+            self.chatViewStyle = style
+        } else {
+            self.chatViewStyle = .classic
         }
     }
     
@@ -149,5 +196,6 @@ class ChatSettingsManager: ObservableObject {
         defaultModelId = nil
         defaultMode = .agent
         defaultPermissionMode = .yesAll
+        chatViewStyle = .classic
     }
 }

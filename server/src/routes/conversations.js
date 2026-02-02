@@ -5,6 +5,7 @@ import { CursorChatReader } from '../utils/CursorChatReader.js';
 import { CursorWorkspace } from '../utils/CursorWorkspace.js';
 import { MobileChatStore } from '../utils/MobileChatStore.js';
 import { getCLIAdapter, getSupportedTools, checkAllToolsAvailability } from '../utils/CLIAdapter.js';
+import { cliSessionManager } from '../utils/CLISessionManager.js';
 import { logger } from '../utils/LogManager.js';
 
 const router = Router();
@@ -97,6 +98,158 @@ router.get('/tools/availability', async (req, res) => {
   } catch (error) {
     console.error('Error checking tool availability:', error);
     res.status(500).json({ error: 'Failed to check tool availability' });
+  }
+});
+
+// Get CLI session manager stats
+router.get('/sessions/stats', async (req, res) => {
+  try {
+    const stats = cliSessionManager.getStats();
+    const activeSessions = cliSessionManager.getActiveSessions();
+    res.json({
+      ...stats,
+      activeSessionIds: activeSessions
+    });
+  } catch (error) {
+    console.error('Error getting session stats:', error);
+    res.status(500).json({ error: 'Failed to get session stats' });
+  }
+});
+
+// Phase 4: Get resumable sessions (suspended sessions that can be resumed)
+router.get('/sessions/resumable', async (req, res) => {
+  try {
+    const resumable = await cliSessionManager.getResumableSessions();
+    res.json({
+      sessions: resumable,
+      count: resumable.length
+    });
+  } catch (error) {
+    console.error('Error getting resumable sessions:', error);
+    res.status(500).json({ error: 'Failed to get resumable sessions' });
+  }
+});
+
+// Phase 4: Get recent sessions (for quick access in app)
+router.get('/sessions/recent', async (req, res) => {
+  try {
+    const { hours = 24 } = req.query;
+    const recent = await cliSessionManager.getRecentSessions(parseInt(hours));
+    res.json({
+      sessions: recent,
+      count: recent.length,
+      hoursBack: parseInt(hours)
+    });
+  } catch (error) {
+    console.error('Error getting recent sessions:', error);
+    res.status(500).json({ error: 'Failed to get recent sessions' });
+  }
+});
+
+// Phase 4: Get session configuration
+router.get('/sessions/config', async (req, res) => {
+  try {
+    const config = await cliSessionManager.getConfig();
+    res.json({ config });
+  } catch (error) {
+    console.error('Error getting session config:', error);
+    res.status(500).json({ error: 'Failed to get session config' });
+  }
+});
+
+// Phase 4: Update session configuration
+router.put('/sessions/config', async (req, res) => {
+  try {
+    const { inactivityTimeoutMs, maxConcurrentSessions, autoResumeEnabled } = req.body;
+    
+    const updated = await cliSessionManager.updateConfig({
+      inactivityTimeoutMs,
+      maxConcurrentSessions,
+      autoResumeEnabled
+    });
+    
+    res.json({
+      success: true,
+      config: updated
+    });
+  } catch (error) {
+    console.error('Error updating session config:', error);
+    res.status(400).json({ 
+      error: 'Failed to update session config',
+      details: error.message
+    });
+  }
+});
+
+// Get session status for a specific conversation
+router.get('/:conversationId/session', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    
+    const session = cliSessionManager.getSession(conversationId);
+    
+    if (!session) {
+      // Session not active, but conversation may exist in store
+      const conversation = await mobileChatStore.getConversation(conversationId);
+      
+      if (!conversation) {
+        return res.status(404).json({ 
+          error: 'Conversation not found',
+          conversationId 
+        });
+      }
+      
+      // Phase 4: Include session state from store
+      const canResume = await cliSessionManager.canResume(conversationId);
+      
+      return res.json({
+        conversationId,
+        isActive: false,
+        tool: conversation.tool,
+        sessionState: conversation.sessionState || 'suspended',
+        suspendReason: conversation.suspendReason || null,
+        lastSessionAt: conversation.lastSessionAt || null,
+        canResume,
+        message: canResume 
+          ? 'Session is suspended. It will resume automatically when you send a message.'
+          : 'Session has ended. Start a new conversation to chat.'
+      });
+    }
+    
+    res.json({
+      conversationId,
+      isActive: session.isActive,
+      sessionState: 'active',
+      tool: session.tool,
+      workspacePath: session.workspacePath,
+      model: session.model,
+      mode: session.mode,
+      uptime: session.uptime,
+      createdAt: session.createdAt
+    });
+  } catch (error) {
+    console.error('Error getting session status:', error);
+    res.status(500).json({ error: 'Failed to get session status' });
+  }
+});
+
+// Terminate a CLI session (keeps conversation, just stops PTY)
+router.delete('/:conversationId/session', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    
+    const terminated = await cliSessionManager.terminate(conversationId);
+    
+    res.json({
+      conversationId,
+      terminated,
+      message: terminated 
+        ? 'Session terminated. CLI session files are preserved for resume.'
+        : 'No active session to terminate.'
+    });
+  } catch (error) {
+    console.error('Error terminating session:', error);
+    res.status(500).json({ error: 'Failed to terminate session' });
   }
 });
 

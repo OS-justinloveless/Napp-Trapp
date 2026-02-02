@@ -9,7 +9,6 @@ struct ProjectSelectionDrawer: View {
     @State private var projects: [Project] = []
     @State private var isLoading = true
     @State private var error: String?
-    @State private var openingProject: String?
     @State private var showSettings = false
     
     var body: some View {
@@ -145,8 +144,7 @@ struct ProjectSelectionDrawer: View {
                 ForEach(projects) { project in
                     ProjectDrawerRow(
                         project: project,
-                        isSelected: selectedProject?.id == project.id,
-                        isOpening: openingProject == project.id
+                        isSelected: selectedProject?.id == project.id
                     ) {
                         selectProject(project)
                     }
@@ -184,32 +182,10 @@ struct ProjectSelectionDrawer: View {
     }
     
     private func selectProject(_ project: Project) {
-        openingProject = project.id
-        
-        Task {
-            guard let api = authManager.createAPIService() else {
-                openingProject = nil
-                return
-            }
-            
-            do {
-                // Open project on server
-                try await api.openProject(id: project.id)
-                
-                await MainActor.run {
-                    selectedProject = project
-                    openingProject = nil
-                    // Close drawer after selection
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        isOpen = false
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    openingProject = nil
-                }
-            }
+        selectedProject = project
+        // Close drawer after selection
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isOpen = false
         }
     }
 }
@@ -217,7 +193,6 @@ struct ProjectSelectionDrawer: View {
 struct ProjectDrawerRow: View {
     let project: Project
     let isSelected: Bool
-    let isOpening: Bool
     let onSelect: () -> Void
     
     var body: some View {
@@ -242,10 +217,7 @@ struct ProjectDrawerRow: View {
                 
                 Spacer()
                 
-                if isOpening {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                } else if isSelected {
+                if isSelected {
                     Image(systemName: "checkmark")
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -257,7 +229,6 @@ struct ProjectDrawerRow: View {
             .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
         }
         .buttonStyle(.plain)
-        .disabled(isOpening)
     }
 }
 

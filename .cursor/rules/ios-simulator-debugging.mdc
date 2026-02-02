@@ -1,0 +1,418 @@
+---
+description: iOS Simulator debugging workflow for autonomous troubleshooting
+globs: ios-client/**/*.swift
+alwaysApply: false
+---
+
+# iOS Simulator Debugging
+
+This rule enables autonomous debugging of the iOS app running in the simulator. Use these tools to investigate issues, capture visual state, and monitor app behavior.
+
+## Debug Script Location
+
+All debugging commands are available through:
+
+```bash
+cd ios-client && ./scripts/debug.sh <command>
+```
+
+## Debugging Workflow
+
+When debugging iOS issues, follow this systematic approach:
+
+### 1. Check Simulator Status
+
+First, verify the simulator is running and the app is installed:
+
+```bash
+cd ios-client && ./scripts/debug.sh status
+```
+
+This shows:
+- Booted simulators
+- Whether the app is installed
+- Running applications
+
+### 2. Capture Visual State
+
+Take screenshots to see what the user sees:
+
+```bash
+cd ios-client && ./scripts/debug.sh screenshot
+```
+
+Screenshots are saved to `ios-client/debug-output/`. Read the image file to analyze the UI state.
+
+### 3. Monitor Logs
+
+Stream app logs to see errors, warnings, and debug output:
+
+```bash
+# Stream logs for 30 seconds (default)
+cd ios-client && ./scripts/debug.sh logs stream 30
+
+# Capture logs to a file for analysis
+cd ios-client && ./scripts/debug.sh logs capture 60
+
+# Show recent logs (last 5 minutes)
+cd ios-client && ./scripts/debug.sh logs recent
+```
+
+Logs are filtered to show only CursorMobile app output.
+
+### 4. Check for Crashes
+
+If the app crashed, retrieve crash logs:
+
+```bash
+cd ios-client && ./scripts/debug.sh crash-logs
+```
+
+### 5. Inspect App Data
+
+View app storage, preferences, and container:
+
+```bash
+cd ios-client && ./scripts/debug.sh app-info
+```
+
+## App Lifecycle Commands
+
+### Relaunch the App
+
+If you need to restart the app after code changes:
+
+```bash
+# Build and reinstall (preserves user data)
+cd ios-client && make build && ./scripts/debug.sh reinstall
+
+# Clean reinstall (removes all app data)
+cd ios-client && make build && ./scripts/debug.sh clean-reinstall
+```
+
+### Launch/Terminate
+
+```bash
+cd ios-client && ./scripts/debug.sh launch
+cd ios-client && ./scripts/debug.sh terminate
+```
+
+## Screen Recording
+
+For complex interactions, record the screen:
+
+```bash
+# Start recording
+cd ios-client && ./scripts/debug.sh record start
+
+# Stop recording (saves to debug-output/)
+cd ios-client && ./scripts/debug.sh record stop
+```
+
+## Testing Deep Links
+
+Test URL handling:
+
+```bash
+cd ios-client && ./scripts/debug.sh openurl "cursormobile://project/123"
+```
+
+## Simulating Conditions
+
+### Location
+```bash
+cd ios-client && ./scripts/debug.sh location sf  # San Francisco
+cd ios-client && ./scripts/debug.sh location 40.7128 -74.0060  # Custom coords
+```
+
+### Memory Pressure
+```bash
+cd ios-client && ./scripts/debug.sh memory warn
+```
+
+### Push Notifications
+```bash
+cd ios-client && ./scripts/debug.sh push
+```
+
+## Debug Output Directory
+
+All debug artifacts are saved to: `ios-client/debug-output/`
+
+- `screenshot_*.png` - Screenshots
+- `logs_*.txt` - Captured logs
+- `recording_*.mp4` - Screen recordings
+- `accessibility_*.txt` - UI hierarchy dumps
+
+## Debugging Best Practices
+
+1. **Always start with status** - Verify the simulator and app are running
+2. **Screenshot before and after** - Capture visual state to verify changes
+3. **Stream logs during reproduction** - Start log streaming, then reproduce the issue
+4. **Check crash logs** - If the app disappears, check for crashes
+5. **Use reinstall sparingly** - Prefer hot reloading when possible
+6. **Clean reinstall for data issues** - If you suspect corrupted state
+
+## Common Debugging Scenarios
+
+### App Won't Launch
+1. `./scripts/debug.sh status` - Check if installed
+2. `make build` - Rebuild the app
+3. `./scripts/debug.sh reinstall` - Reinstall and launch
+4. `./scripts/debug.sh logs stream` - Check for startup errors
+
+### UI Not Rendering Correctly
+1. `./scripts/debug.sh screenshot` - Capture current state
+2. Read the screenshot to analyze layout issues
+3. `./scripts/debug.sh logs stream` - Check for SwiftUI errors
+
+### App Crashes
+1. `./scripts/debug.sh crash-logs` - Get crash report
+2. `./scripts/debug.sh logs recent` - Check logs before crash
+3. Analyze stack trace to identify root cause
+
+### Network Issues
+1. `./scripts/debug.sh logs stream` - Monitor network-related logs
+2. `./scripts/debug.sh app-info` - Check cached data in app container
+
+### Testing Changes
+1. `make build` - Compile changes
+2. `./scripts/debug.sh reinstall` - Install and launch
+3. `./scripts/debug.sh screenshot` - Verify UI changes
+4. `./scripts/debug.sh logs stream` - Monitor for errors
+
+## Integration with Build
+
+After modifying Swift files:
+
+```bash
+# Build, reinstall, and verify
+cd ios-client && make build && ./scripts/debug.sh reinstall && ./scripts/debug.sh screenshot
+```
+
+This compiles changes, installs them, and captures the result for visual verification.
+
+## Autonomous UI Automation with idb
+
+For fully autonomous testing and debugging, use `idb` (iOS Debug Bridge) to control the simulator programmatically. This enables tapping UI elements, typing text, and verifying app behavior without user intervention.
+
+### Installation
+
+```bash
+# Install idb companion (native binary)
+brew install facebook/fb/idb-companion
+
+# Install idb client (Python package)
+pip3 install fb-idb
+```
+
+### Finding Simulators
+
+```bash
+# List all simulator targets
+idb list-targets
+
+# Connect to a specific simulator by UDID
+idb connect <udid>
+```
+
+### Taking Screenshots
+
+```bash
+# Capture screenshot to a file
+idb screenshot --udid <udid> /path/to/screenshot.png
+```
+
+### UI Element Discovery (CRITICAL)
+
+**Always use `describe-all` before tapping to find exact element coordinates:**
+
+```bash
+# Get all UI elements with accessibility info
+idb ui describe-all --udid <udid>
+```
+
+This returns JSON with element frames. Parse it to find tap coordinates:
+
+```bash
+# Find a specific element by label
+idb ui describe-all --udid <udid> 2>&1 | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for x in d:
+    label = x.get('AXLabel', '') or ''
+    if 'YourButtonLabel' in label:
+        frame = x['frame']
+        center_x = frame['x'] + frame['width'] / 2
+        center_y = frame['y'] + frame['height'] / 2
+        print(f'Tap at: {center_x}, {center_y}')"
+```
+
+**Key accessibility properties:**
+- `AXLabel` - The accessibility label (button text, etc.)
+- `AXValue` - Current value (for text fields)
+- `frame` - Contains `x`, `y`, `width`, `height`
+- `role` - Element type (AXButton, AXTextField, AXStaticText, etc.)
+
+### Tapping Elements
+
+```bash
+# Tap at specific coordinates (calculate from frame center)
+idb ui tap --udid <udid> <x> <y>
+```
+
+**Important:** Calculate tap coordinates from the element frame:
+```
+center_x = frame.x + (frame.width / 2)
+center_y = frame.y + (frame.height / 2)
+```
+
+### Text Input
+
+```bash
+# Type text into focused field
+idb ui text --udid <udid> "Your text here"
+```
+
+**Workflow for text input:**
+1. Tap the text field first to focus it
+2. Wait briefly for keyboard (sleep 0.3)
+3. Use `idb ui text` to type
+
+### App Management
+
+```bash
+# List installed apps (to find bundle ID)
+idb list-apps --udid <udid>
+
+# Launch an app by bundle ID
+idb launch <bundle-id>
+
+# Terminate an app
+idb terminate <bundle-id>
+
+# Uninstall an app
+idb uninstall <bundle-id>
+```
+
+**Note:** Bundle IDs may differ from expected. Always verify with `idb list-apps` if launch fails.
+
+### Autonomous Testing Workflow
+
+1. **Get simulator UDID:**
+   ```bash
+   UDID=$(idb list-targets 2>&1 | grep "Booted" | head -1 | awk '{print $1}')
+   ```
+
+2. **Take initial screenshot:**
+   ```bash
+   idb screenshot --udid $UDID ios-client/debug-output/step1.png
+   ```
+
+3. **Find element to interact with:**
+   ```bash
+   idb ui describe-all --udid $UDID 2>&1 | python3 -c "..."
+   ```
+
+4. **Tap element at calculated coordinates:**
+   ```bash
+   idb ui tap --udid $UDID 200 450
+   ```
+
+5. **Wait for UI to stabilize:**
+   ```bash
+   sleep 1
+   ```
+
+6. **Verify result with screenshot:**
+   ```bash
+   idb screenshot --udid $UDID ios-client/debug-output/step2.png
+   ```
+
+### Common Gotchas
+
+1. **Never guess bundle IDs** - Extract programmatically from Info.plist:
+   ```bash
+   /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" ios-client/CursorMobile/CursorMobile/Info.plist
+   ```
+
+2. **idb tool unreliability** - Some idb commands fail silently or with cryptic errors:
+   - `idb screenshot` → "No Image available" - Use `xcrun simctl io booted screenshot` instead
+   - `idb ui key return` → "invalid int value" - Use key codes: `idb ui key 40` (40 = return)
+   - `idb ui describe-all` misses SwiftUI elements - Fall back to visual coordinates from screenshots
+
+3. **SwiftUI toolbar buttons may not appear in accessibility tree** - Use visual coordinates from screenshots if `describe-all` doesn't show the element.
+
+4. **Sheet/modal coordinates** - Elements in sheets have coordinates relative to the screen, not the sheet. Use `describe-all` to get accurate positions.
+
+5. **Text field appending** - `idb ui text` appends to existing content. Clear the field first if needed by selecting all (triple-tap) then typing.
+
+6. **Timing issues** - Always add short delays (sleep 0.3-1s) between actions to let UI stabilize.
+
+7. **Nav bar elements** - Navigation bar buttons are often around y=90-110 for standard iPhone layouts.
+
+### Fallback Commands (when idb fails)
+
+```bash
+# Screenshot fallback
+xcrun simctl io booted screenshot ios-client/debug-output/screenshot.png
+
+# Get bundle ID from installed apps
+xcrun simctl listapps booted | grep -A1 CFBundleIdentifier
+
+# Launch app by bundle ID
+xcrun simctl launch booted com.lovelesslabstx
+
+# Terminate app
+xcrun simctl terminate booted com.lovelesslabstx
+```
+
+### Example: Complete Login Flow
+
+```bash
+UDID="4EEDFA87-840B-4186-BA71-D7894416E362"
+
+# Find and tap server address field
+idb ui describe-all --udid $UDID 2>&1 | grep -i "server"
+# Output shows frame at y=200
+
+# Tap field, clear, and enter new value
+idb ui tap --udid $UDID 200 200
+sleep 0.3
+idb ui text --udid $UDID "192.168.1.111:3847"
+
+# Find and tap Connect button
+idb ui describe-all --udid $UDID 2>&1 | grep -i "connect"
+# Calculate center from frame
+
+idb ui tap --udid $UDID 200 500
+sleep 2
+
+# Verify connection with screenshot
+idb screenshot --udid $UDID ios-client/debug-output/connected.png
+```
+
+### Debugging API Issues
+
+When debugging server/API integration issues:
+
+1. **Test API directly with curl** to isolate iOS vs server issues:
+   ```bash
+   curl -H "Authorization: Bearer <token>" "http://192.168.1.111:3847/api/endpoint"
+   ```
+
+2. **Compare response structure** between endpoints to find missing fields
+
+3. **Check iOS model expectations** - Swift Codable is strict about JSON structure
+
+## Restarting the Server via API
+
+To restart the server after code changes, use the restart endpoint with the auth token from `server/.napp-trapp-data/auth.json`:
+
+```bash
+# Restart server and wait for it to come back up
+AUTH_TOKEN=$(cat server/.napp-trapp-data/auth.json | python3 -c "import sys,json; print(json.load(sys.stdin)['masterToken'])") && \
+curl -X POST -H "Authorization: Bearer $AUTH_TOKEN" -H "Content-Type: application/json" "http://localhost:3847/api/system/restart" && \
+sleep 5 && \
+curl -s -H "Authorization: Bearer $AUTH_TOKEN" "http://localhost:3847/api/system/info" > /dev/null && echo "Server is back up"
+```

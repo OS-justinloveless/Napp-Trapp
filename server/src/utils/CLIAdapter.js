@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
+import { ContentBlockType, createContentBlock, isDiffContent, parseDiff, extractCodeBlocks } from './OutputParser.js';
 
 /**
  * Base CLI Adapter - Abstract interface for AI CLI tools
@@ -23,7 +24,7 @@ export class CLIAdapter {
   }
 
   /**
-   * Build arguments for sending a message to an existing chat
+   * Build arguments for sending a message to an existing chat (non-interactive)
    * @param {Object} options - Message options
    * @param {string} options.chatId - Chat/session ID
    * @param {string} options.message - Message text
@@ -34,6 +35,21 @@ export class CLIAdapter {
    */
   buildSendMessageArgs(options) {
     throw new Error('buildSendMessageArgs must be implemented by subclass');
+  }
+
+  /**
+   * Build arguments for interactive mode (PTY session)
+   * Used when spawning a persistent PTY for the CLI.
+   * 
+   * @param {Object} options - Session options
+   * @param {string} options.sessionId - Session/conversation ID for resume
+   * @param {string} options.workspacePath - Path to workspace directory
+   * @param {string} options.model - Model to use (optional)
+   * @param {string} options.mode - Chat mode (agent|plan|ask)
+   * @returns {Array} Command arguments (without executable)
+   */
+  buildInteractiveArgs(options) {
+    throw new Error('buildInteractiveArgs must be implemented by subclass');
   }
 
   /**
@@ -60,10 +76,32 @@ export class CLIAdapter {
   async isAvailable() {
     try {
       const executable = this.getExecutable();
-      execSync(`which ${executable}`, { stdio: 'pipe' });
+      const whichResult = execSync(`which ${executable}`, { stdio: 'pipe' }).toString().trim();
+      // Cache the resolved path for later use
+      this._resolvedPath = whichResult;
       return true;
     } catch (error) {
       return false;
+    }
+  }
+
+  /**
+   * Get the resolved executable path (after isAvailable was called)
+   * Falls back to command name if path wasn't resolved
+   * @returns {string} Full path to executable or command name
+   */
+  getResolvedExecutable() {
+    if (this._resolvedPath) {
+      return this._resolvedPath;
+    }
+    // Try to resolve now
+    try {
+      const executable = this.getExecutable();
+      this._resolvedPath = execSync(`which ${executable}`, { stdio: 'pipe' }).toString().trim();
+      return this._resolvedPath;
+    } catch (e) {
+      // Return command name as fallback
+      return this.getExecutable();
     }
   }
 
@@ -81,6 +119,84 @@ export class CLIAdapter {
    */
   getInstallInstructions() {
     throw new Error('getInstallInstructions must be implemented by subclass');
+  }
+
+  /**
+   * Get capabilities of this CLI tool
+   * @returns {Object} Capability flags
+   */
+  getCapabilities() {
+    return {
+      streaming: true,
+      sessionResume: true,
+      toolUse: true,
+      fileEditing: true,
+      interactiveMode: true
+    };
+  }
+
+  // ============ Output Parsing Methods ============
+
+  /**
+   * Get the parsing strategy for this CLI's output
+   * @returns {string} 'json-lines' | 'json-stream' | 'ansi-text'
+   */
+  getParseStrategy() {
+    return 'ansi-text'; // Default: parse as ANSI terminal output
+  }
+
+  /**
+   * Parse a JSON event from the CLI's structured output
+   * Override in subclasses for tool-specific parsing.
+   * 
+   * @param {Object} json - Parsed JSON object
+   * @returns {Object|Array|null} ContentBlock(s) or null to skip
+   */
+  parseJsonEvent(json) {
+    // Default: wrap as raw content
+    return createContentBlock(ContentBlockType.RAW, {
+      content: JSON.stringify(json)
+    });
+  }
+
+  /**
+   * Parse a text line from terminal output
+   * Override in subclasses for tool-specific parsing.
+   * 
+   * @param {string} stripped - ANSI-stripped text
+   * @param {string} original - Original text with ANSI codes
+   * @returns {Object|null} ContentBlock or null to skip
+   */
+  parseTextLine(stripped, original = stripped) {
+    // Default: emit as text
+    return createContentBlock(ContentBlockType.TEXT, {
+      content: stripped
+    });
+  }
+
+  /**
+   * Detect if the CLI is waiting for user input
+   * @param {string} output - Recent output text
+   * @returns {Object|null} Input request info or null
+   */
+  detectInputRequest(output) {
+    // Common patterns for input prompts
+    if (output.includes('(y/n)') || output.includes('[Y/n]') || output.includes('[y/N]')) {
+      return { type: 'confirmation', prompt: output };
+    }
+    if (output.includes('?') && output.trim().endsWith(':')) {
+      return { type: 'question', prompt: output };
+    }
+    return null;
+  }
+
+  /**
+   * Detect if the CLI is showing an approval request
+   * @param {string} output - Recent output text
+   * @returns {Object|null} Approval request info or null
+   */
+  detectApprovalRequest(output) {
+    return null; // Override in subclasses
   }
 }
 
@@ -128,6 +244,26 @@ export class CursorAgentAdapter extends CLIAdapter {
     return args;
   }
 
+  buildInteractiveArgs({ sessionId, workspacePath, model, mode }) {
+    // For interactive mode, we use --resume to continue an existing session
+    // or start a new one with the given session ID
+    const args = ['--resume', sessionId];
+
+    if (workspacePath) {
+      args.push('--workspace', workspacePath);
+    }
+    if (model) {
+      args.push('--model', model);
+    }
+    if (mode && mode !== 'agent') {
+      args.push('--mode', mode);
+    }
+
+    // No -p flag for interactive mode - we want the full REPL experience
+    // No --output-format since we're in a PTY
+    return args;
+  }
+
   getExecutable() {
     return 'cursor-agent';
   }
@@ -143,6 +279,195 @@ export class CursorAgentAdapter extends CLIAdapter {
 
   getInstallInstructions() {
     return 'Install cursor-agent: curl https://cursor.com/install -fsS | bash';
+  }
+
+  // ============ Output Parsing ============
+
+  getParseStrategy() {
+    // cursor-agent uses JSON lines in --output-format stream-json mode
+    // In interactive PTY mode, it uses ANSI text
+    return 'ansi-text';
+  }
+
+  parseJsonEvent(json) {
+    const blocks = [];
+    
+    // cursor-agent JSON event types (similar to Claude but may vary)
+    switch (json.type) {
+      case 'assistant':
+        if (json.message?.content) {
+          for (const item of json.message.content) {
+            if (item.type === 'text' && item.text) {
+              blocks.push(createContentBlock(ContentBlockType.TEXT, {
+                content: item.text
+              }));
+            } else if (item.type === 'tool_use') {
+              blocks.push(createContentBlock(ContentBlockType.TOOL_USE_START, {
+                toolId: item.id,
+                toolName: item.name,
+                input: item.input
+              }));
+            } else if (item.type === 'tool_result') {
+              blocks.push(createContentBlock(ContentBlockType.TOOL_USE_RESULT, {
+                toolId: item.tool_use_id,
+                content: item.content,
+                isError: item.is_error || false
+              }));
+            }
+          }
+        }
+        break;
+        
+      case 'text':
+        blocks.push(createContentBlock(ContentBlockType.TEXT, {
+          content: json.content || json.text
+        }));
+        break;
+        
+      case 'tool_call':
+        blocks.push(createContentBlock(ContentBlockType.TOOL_USE_START, {
+          toolId: json.id,
+          toolName: json.name,
+          input: json.arguments || json.input
+        }));
+        break;
+        
+      case 'tool_result':
+        blocks.push(createContentBlock(ContentBlockType.TOOL_USE_RESULT, {
+          toolId: json.tool_call_id || json.id,
+          content: json.content,
+          isError: json.is_error || false
+        }));
+        break;
+        
+      case 'complete':
+        blocks.push(createContentBlock(ContentBlockType.SESSION_END, {
+          success: json.success,
+          reason: json.reason
+        }));
+        break;
+        
+      case 'error':
+        blocks.push(createContentBlock(ContentBlockType.ERROR, {
+          message: json.message || json.error,
+          code: json.code
+        }));
+        break;
+        
+      case 'stderr':
+        blocks.push(createContentBlock(ContentBlockType.ERROR, {
+          message: json.content,
+          isStderr: true
+        }));
+        break;
+        
+      default:
+        blocks.push(createContentBlock(ContentBlockType.RAW, {
+          content: JSON.stringify(json)
+        }));
+    }
+    
+    return blocks.length > 0 ? blocks : null;
+  }
+
+  parseTextLine(stripped, original = stripped) {
+    // Detect cursor-agent specific patterns
+    
+    // Progress indicators
+    if (stripped.startsWith('→') || stripped.startsWith('●')) {
+      return createContentBlock(ContentBlockType.PROGRESS, {
+        message: stripped.replace(/^[→●]\s*/, '').trim()
+      });
+    }
+    
+    // Tool use indicators
+    if (stripped.startsWith('🔧') || stripped.includes('Using tool:')) {
+      const match = stripped.match(/(?:Using tool:|🔧)\s*(\w+)/);
+      return createContentBlock(ContentBlockType.TOOL_USE_START, {
+        toolName: match ? match[1] : 'unknown'
+      });
+    }
+    
+    // File operations
+    if (stripped.includes('Reading:') || stripped.includes('📖')) {
+      const match = stripped.match(/(?:Reading:|📖)\s*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_READ, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    if (stripped.includes('Writing:') || stripped.includes('✏️')) {
+      const match = stripped.match(/(?:Writing:|✏️)\s*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_EDIT, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    // Command execution
+    if (stripped.startsWith('$') || stripped.includes('Running:')) {
+      const match = stripped.match(/(?:\$|Running:)\s*(.+)/);
+      return createContentBlock(ContentBlockType.COMMAND_RUN, {
+        command: match ? match[1].trim() : stripped
+      });
+    }
+    
+    // Mode indicators
+    if (stripped.includes('Mode:') || stripped.includes('agent mode') || stripped.includes('plan mode')) {
+      return createContentBlock(ContentBlockType.PROGRESS, {
+        message: stripped,
+        isMode: true
+      });
+    }
+    
+    // Thinking
+    if (stripped.includes('Thinking') || stripped.match(/^\.\.\./)) {
+      return createContentBlock(ContentBlockType.THINKING, {
+        content: stripped
+      });
+    }
+    
+    // Error messages
+    if (stripped.toLowerCase().includes('error:') || stripped.startsWith('❌')) {
+      return createContentBlock(ContentBlockType.ERROR, {
+        message: stripped.replace(/^❌\s*/, '').replace(/^error:\s*/i, '')
+      });
+    }
+    
+    // Success messages
+    if (stripped.startsWith('✓') || stripped.startsWith('✅')) {
+      return createContentBlock(ContentBlockType.PROGRESS, {
+        message: stripped,
+        isSuccess: true
+      });
+    }
+    
+    // Diff content
+    if (isDiffContent(stripped)) {
+      return createContentBlock(ContentBlockType.CODE_BLOCK, {
+        language: 'diff',
+        code: original
+      });
+    }
+    
+    // Default: regular text
+    return createContentBlock(ContentBlockType.TEXT, {
+      content: stripped
+    });
+  }
+
+  detectApprovalRequest(output) {
+    // cursor-agent approval patterns
+    if (output.includes('(y/n)') || output.includes('Confirm')) {
+      const isFileEdit = output.includes('edit') || output.includes('write') || output.includes('modify');
+      const isCommand = output.includes('run') || output.includes('execute');
+      
+      return {
+        type: isFileEdit ? 'file_edit' : isCommand ? 'command' : 'generic',
+        prompt: output,
+        options: ['y', 'n']
+      };
+    }
+    return null;
   }
 }
 
@@ -190,6 +515,25 @@ export class ClaudeAdapter extends CLIAdapter {
     return args;
   }
 
+  buildInteractiveArgs({ sessionId, workspacePath, model, mode }) {
+    // For interactive mode, use --resume to continue session
+    // Claude Code uses --resume for interactive session continuation
+    const args = ['--resume', '--session-id', sessionId];
+
+    if (workspacePath) {
+      args.push('--workspace', workspacePath);
+    }
+    if (model) {
+      args.push('--model', model);
+    }
+    if (mode === 'plan') {
+      args.push('--permission-mode', 'plan');
+    }
+
+    // No --print flag for interactive mode
+    return args;
+  }
+
   getExecutable() {
     // Cache the detected executable
     if (this._executable) {
@@ -226,6 +570,188 @@ export class ClaudeAdapter extends CLIAdapter {
   getInstallInstructions() {
     return 'Install Claude Code CLI: https://github.com/anthropics/claude-code';
   }
+
+  // ============ Output Parsing ============
+
+  getParseStrategy() {
+    // Claude Code uses JSON lines in --output-format stream-json mode
+    // In interactive PTY mode, it uses ANSI text
+    return 'ansi-text';
+  }
+
+  parseJsonEvent(json) {
+    const blocks = [];
+    
+    // Handle different Claude Code event types
+    switch (json.type) {
+      case 'assistant':
+        // Assistant message with content blocks
+        if (json.message?.content) {
+          for (const item of json.message.content) {
+            if (item.type === 'text' && item.text) {
+              blocks.push(createContentBlock(ContentBlockType.TEXT, {
+                content: item.text
+              }));
+            } else if (item.type === 'tool_use') {
+              blocks.push(createContentBlock(ContentBlockType.TOOL_USE_START, {
+                toolId: item.id,
+                toolName: item.name,
+                input: item.input
+              }));
+            } else if (item.type === 'tool_result') {
+              blocks.push(createContentBlock(ContentBlockType.TOOL_USE_RESULT, {
+                toolId: item.tool_use_id,
+                content: item.content,
+                isError: item.is_error || false
+              }));
+            }
+          }
+        }
+        break;
+        
+      case 'content_block_start':
+        if (json.content_block?.type === 'tool_use') {
+          blocks.push(createContentBlock(ContentBlockType.TOOL_USE_START, {
+            toolId: json.content_block.id,
+            toolName: json.content_block.name,
+            input: {}
+          }));
+        }
+        break;
+        
+      case 'content_block_delta':
+        if (json.delta?.type === 'text_delta') {
+          blocks.push(createContentBlock(ContentBlockType.TEXT, {
+            content: json.delta.text,
+            isPartial: true
+          }));
+        } else if (json.delta?.type === 'input_json_delta') {
+          // Tool input being streamed - accumulate
+          blocks.push(createContentBlock(ContentBlockType.PROGRESS, {
+            message: 'Tool input streaming...',
+            toolId: json.index
+          }));
+        }
+        break;
+        
+      case 'content_block_stop':
+        // Content block completed
+        break;
+        
+      case 'message_start':
+        blocks.push(createContentBlock(ContentBlockType.SESSION_START, {
+          model: json.message?.model,
+          role: json.message?.role
+        }));
+        break;
+        
+      case 'message_delta':
+        if (json.usage) {
+          blocks.push(createContentBlock(ContentBlockType.USAGE, {
+            inputTokens: json.usage.input_tokens,
+            outputTokens: json.usage.output_tokens
+          }));
+        }
+        break;
+        
+      case 'message_stop':
+        blocks.push(createContentBlock(ContentBlockType.SESSION_END, {
+          reason: json.stop_reason
+        }));
+        break;
+        
+      case 'error':
+        blocks.push(createContentBlock(ContentBlockType.ERROR, {
+          message: json.error?.message || 'Unknown error',
+          code: json.error?.code
+        }));
+        break;
+        
+      default:
+        // Unknown event type, pass through as raw
+        blocks.push(createContentBlock(ContentBlockType.RAW, {
+          content: JSON.stringify(json)
+        }));
+    }
+    
+    return blocks.length > 0 ? blocks : null;
+  }
+
+  parseTextLine(stripped, original = stripped) {
+    // Detect Claude-specific patterns
+    
+    // Tool execution patterns
+    if (stripped.startsWith('⚡')) {
+      return createContentBlock(ContentBlockType.PROGRESS, {
+        message: stripped.replace('⚡', '').trim()
+      });
+    }
+    
+    // File operations
+    if (stripped.includes('Reading file:') || stripped.includes('Read ')) {
+      const match = stripped.match(/(?:Reading file:|Read)\s*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_READ, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    if (stripped.includes('Writing to') || stripped.includes('Wrote ')) {
+      const match = stripped.match(/(?:Writing to|Wrote)\s*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_EDIT, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    // Command execution
+    if (stripped.startsWith('$') || stripped.startsWith('>')) {
+      return createContentBlock(ContentBlockType.COMMAND_RUN, {
+        command: stripped.slice(1).trim()
+      });
+    }
+    
+    // Approval prompts
+    if (stripped.includes('Allow?') || stripped.includes('Approve?')) {
+      return createContentBlock(ContentBlockType.APPROVAL_REQUEST, {
+        action: 'generic',
+        prompt: stripped
+      });
+    }
+    
+    // Diff content
+    if (isDiffContent(stripped)) {
+      return createContentBlock(ContentBlockType.CODE_BLOCK, {
+        language: 'diff',
+        code: original
+      });
+    }
+    
+    // Thinking indicator
+    if (stripped.includes('Thinking') || stripped.includes('...')) {
+      return createContentBlock(ContentBlockType.THINKING, {
+        content: stripped
+      });
+    }
+    
+    // Default: regular text
+    return createContentBlock(ContentBlockType.TEXT, {
+      content: stripped
+    });
+  }
+
+  detectApprovalRequest(output) {
+    // Claude Code approval patterns
+    if (output.includes('Do you want to') || output.includes('Allow')) {
+      const isFileEdit = output.includes('write') || output.includes('edit') || output.includes('modify');
+      const isCommand = output.includes('run') || output.includes('execute') || output.includes('command');
+      
+      return {
+        type: isFileEdit ? 'file_edit' : isCommand ? 'command' : 'generic',
+        prompt: output,
+        options: ['y', 'n']
+      };
+    }
+    return null;
+  }
 }
 
 /**
@@ -258,6 +784,23 @@ export class GeminiAdapter extends CLIAdapter {
     return args;
   }
 
+  buildInteractiveArgs({ sessionId, workspacePath, model, mode }) {
+    // For interactive mode, launch without --prompt to enter REPL
+    const args = [];
+
+    if (sessionId) {
+      args.push('--session-id', sessionId);
+    }
+    if (workspacePath) {
+      args.push('--workspace', workspacePath);
+    }
+    if (model) {
+      args.push('--model', model);
+    }
+
+    return args;
+  }
+
   getExecutable() {
     return 'gemini';
   }
@@ -273,6 +816,131 @@ export class GeminiAdapter extends CLIAdapter {
 
   getInstallInstructions() {
     return 'Install Gemini CLI: Check Google AI documentation for installation instructions';
+  }
+
+  // ============ Output Parsing ============
+
+  getParseStrategy() {
+    // Gemini CLI output format (may vary based on actual CLI)
+    return 'ansi-text';
+  }
+
+  parseJsonEvent(json) {
+    const blocks = [];
+    
+    // Gemini-specific JSON parsing (structure may vary)
+    if (json.text || json.content) {
+      blocks.push(createContentBlock(ContentBlockType.TEXT, {
+        content: json.text || json.content
+      }));
+    }
+    
+    if (json.functionCall || json.tool_call) {
+      const call = json.functionCall || json.tool_call;
+      blocks.push(createContentBlock(ContentBlockType.TOOL_USE_START, {
+        toolId: call.id,
+        toolName: call.name,
+        input: call.args || call.arguments
+      }));
+    }
+    
+    if (json.functionResponse || json.tool_result) {
+      const result = json.functionResponse || json.tool_result;
+      blocks.push(createContentBlock(ContentBlockType.TOOL_USE_RESULT, {
+        toolId: result.id,
+        content: result.response || result.content,
+        isError: result.error || false
+      }));
+    }
+    
+    if (json.error) {
+      blocks.push(createContentBlock(ContentBlockType.ERROR, {
+        message: json.error.message || json.error,
+        code: json.error.code
+      }));
+    }
+    
+    if (blocks.length === 0) {
+      blocks.push(createContentBlock(ContentBlockType.RAW, {
+        content: JSON.stringify(json)
+      }));
+    }
+    
+    return blocks;
+  }
+
+  parseTextLine(stripped, original = stripped) {
+    // Gemini-specific patterns (may vary based on actual CLI)
+    
+    // Thinking/processing
+    if (stripped.includes('Thinking') || stripped.includes('Processing')) {
+      return createContentBlock(ContentBlockType.THINKING, {
+        content: stripped
+      });
+    }
+    
+    // Function/tool calls
+    if (stripped.includes('Calling function:') || stripped.includes('🔧')) {
+      const match = stripped.match(/(?:Calling function:|🔧)\s*(\w+)/);
+      return createContentBlock(ContentBlockType.TOOL_USE_START, {
+        toolName: match ? match[1] : 'unknown'
+      });
+    }
+    
+    // File operations
+    if (stripped.includes('Reading file') || stripped.includes('📄')) {
+      const match = stripped.match(/(?:Reading file|📄)[:\s]*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_READ, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    if (stripped.includes('Writing file') || stripped.includes('💾')) {
+      const match = stripped.match(/(?:Writing file|💾)[:\s]*(.+)/);
+      return createContentBlock(ContentBlockType.FILE_EDIT, {
+        path: match ? match[1].trim() : stripped
+      });
+    }
+    
+    // Command execution
+    if (stripped.startsWith('$') || stripped.includes('Executing:')) {
+      const match = stripped.match(/(?:\$|Executing:)\s*(.+)/);
+      return createContentBlock(ContentBlockType.COMMAND_RUN, {
+        command: match ? match[1].trim() : stripped
+      });
+    }
+    
+    // Error messages
+    if (stripped.toLowerCase().includes('error') && stripped.includes(':')) {
+      return createContentBlock(ContentBlockType.ERROR, {
+        message: stripped
+      });
+    }
+    
+    // Diff content
+    if (isDiffContent(stripped)) {
+      return createContentBlock(ContentBlockType.CODE_BLOCK, {
+        language: 'diff',
+        code: original
+      });
+    }
+    
+    // Default: regular text
+    return createContentBlock(ContentBlockType.TEXT, {
+      content: stripped
+    });
+  }
+
+  detectApprovalRequest(output) {
+    // Gemini approval patterns
+    if (output.includes('(y/n)') || output.includes('Confirm?')) {
+      return {
+        type: 'generic',
+        prompt: output,
+        options: ['y', 'n']
+      };
+    }
+    return null;
   }
 }
 

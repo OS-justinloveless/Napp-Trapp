@@ -5,6 +5,34 @@ import os from 'os';
 import { CursorWorkspace } from '../utils/CursorWorkspace.js';
 import { CursorChatReader } from '../utils/CursorChatReader.js';
 
+/**
+ * Determine if a conversation is read-only from mobile's perspective.
+ */
+function isConversationReadOnly(chat) {
+  if (chat.source === 'mobile') {
+    return false;
+  }
+  if (chat.hasMobileMessages && chat.source !== 'mobile') {
+    return true;
+  }
+  return true;
+}
+
+/**
+ * Add read-only flag and metadata to conversations for mobile clients
+ */
+function enrichConversationForMobile(chat) {
+  const isReadOnly = isConversationReadOnly(chat);
+  return {
+    ...chat,
+    isReadOnly,
+    readOnlyReason: isReadOnly 
+      ? 'This conversation was created in Cursor IDE. You can view it but cannot add messages.'
+      : null,
+    canFork: isReadOnly && chat.messageCount > 0
+  };
+}
+
 const router = Router();
 const cursorWorkspace = new CursorWorkspace();
 const chatReader = new CursorChatReader();
@@ -113,7 +141,7 @@ router.get('/:projectId/conversations', async (req, res) => {
     
     const conversations = await chatReader.getChatsByProjectPath(project.path);
     
-    // Estimate tokens for each conversation
+    // Estimate tokens for each conversation and enrich with mobile metadata
     let totalProjectTokens = 0;
     const conversationsWithTokens = await Promise.all(
       conversations.map(async (conv) => {
@@ -123,8 +151,10 @@ router.get('/:projectId/conversations', async (req, res) => {
           conv.workspaceId
         );
         totalProjectTokens += estimatedTokens;
+        // Add mobile-specific fields (isReadOnly, readOnlyReason, canFork)
+        const enriched = enrichConversationForMobile(conv);
         return {
-          ...conv,
+          ...enriched,
           estimatedTokens
         };
       })

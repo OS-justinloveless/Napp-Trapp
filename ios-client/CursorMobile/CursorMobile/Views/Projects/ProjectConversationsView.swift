@@ -13,6 +13,7 @@ struct ProjectConversationsView: View {
     @State private var newChatId: String?
     @State private var newChatModelId: String?
     @State private var newChatMode: ChatMode = .agent
+    @State private var newInitialMessage: String = ""
     @State private var searchText = ""
     @State private var hideReadOnly = false
     @State private var showNewChatSheet = false
@@ -85,9 +86,9 @@ struct ProjectConversationsView: View {
             ConversationDetailView(conversation: conversation)
         }
         .navigationDestination(item: $newChatId) { chatId in
-            // Navigate to the new chat using a temporary Conversation object
-            // New chats from mobile are editable (not read-only)
-            ConversationDetailView(
+            // Navigate to the new chat using ChatSessionView (WebSocket-based)
+            // This allows for real-time streaming and proper CLI session handling
+            ChatSessionView(
                 conversation: Conversation(
                     id: chatId,
                     type: "chat",
@@ -104,8 +105,8 @@ struct ProjectConversationsView: View {
                     readOnlyReason: nil,
                     canFork: false
                 ),
-                initialModelId: newChatModelId,
-                initialMode: newChatMode
+                workspaceId: project.id,
+                initialMessage: newInitialMessage
             )
         }
         .sheet(isPresented: $showNewChatSheet) {
@@ -113,8 +114,7 @@ struct ProjectConversationsView: View {
                 newChatModelId = modelId
                 newChatMode = mode
                 newChatId = chatId
-                // Note: initialMessage will be sent automatically when the view appears
-                // TODO: Pass initialMessage to ConversationDetailView to send on appear
+                newInitialMessage = initialMessage
             }
         }
         .onAppear {

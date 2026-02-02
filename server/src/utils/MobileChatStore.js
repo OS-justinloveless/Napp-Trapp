@@ -31,7 +31,11 @@ const __dirname = path.dirname(__filename);
  *       mode: 'agent' | 'plan' | 'ask',
  *       createdAt: number,
  *       updatedAt: number,
- *       source: 'mobile'
+ *       source: 'mobile',
+ *       // Phase 4: Session state
+ *       sessionState: 'active' | 'suspended' | 'ended' | null,
+ *       lastSessionAt: number | null,
+ *       suspendReason: string | null
  *     }
  *   },
  *   messages: {
@@ -44,6 +48,12 @@ const __dirname = path.dirname(__filename);
  *         toolCalls: array | null
  *       }
  *     ]
+ *   },
+ *   // Phase 4: Session configuration
+ *   sessionConfig: {
+ *     inactivityTimeoutMs: number,
+ *     maxConcurrentSessions: number,
+ *     autoResumeEnabled: boolean
  *   }
  * }
  */
@@ -382,5 +392,167 @@ export class MobileChatStore {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+  }
+
+  // ============ Phase 4: Session State Management ============
+
+  /**
+   * Update session state for a conversation
+   * 
+   * @param {string} chatId - The conversation ID
+   * @param {string} state - 'active' | 'suspended' | 'ended'
+   * @param {string|null} reason - Optional reason for the state change
+   */
+  async updateSessionState(chatId, state, reason = null) {
+    await this.init();
+    
+    if (!this.data.conversations[chatId]) {
+      return null;
+    }
+    
+    const validStates = ['active', 'suspended', 'ended'];
+    if (!validStates.includes(state)) {
+      throw new Error(`Invalid session state: ${state}. Must be one of: ${validStates.join(', ')}`);
+    }
+    
+    this.data.conversations[chatId].sessionState = state;
+    this.data.conversations[chatId].lastSessionAt = Date.now();
+    
+    if (reason) {
+      this.data.conversations[chatId].suspendReason = reason;
+    } else if (state === 'active') {
+      this.data.conversations[chatId].suspendReason = null;
+    }
+    
+    await this.save();
+    return this.data.conversations[chatId];
+  }
+
+  /**
+   * Get all conversations that have a suspended session (can be resumed)
+   * 
+   * @returns {Array} Conversations with suspended sessions
+   */
+  async getSuspendedSessions() {
+    await this.init();
+    
+    return Object.values(this.data.conversations)
+      .filter(conv => conv.sessionState === 'suspended')
+      .sort((a, b) => (b.lastSessionAt || 0) - (a.lastSessionAt || 0));
+  }
+
+  /**
+   * Get all conversations that have been used recently (within last N hours)
+   * Useful for showing "recent sessions" in the app
+   * 
+   * @param {number} hours - Number of hours to look back
+   * @returns {Array} Recently used conversations
+   */
+  async getRecentSessions(hours = 24) {
+    await this.init();
+    
+    const cutoff = Date.now() - (hours * 60 * 60 * 1000);
+    
+    return Object.values(this.data.conversations)
+      .filter(conv => (conv.lastSessionAt || conv.updatedAt) > cutoff)
+      .sort((a, b) => (b.lastSessionAt || b.updatedAt) - (a.lastSessionAt || a.updatedAt));
+  }
+
+  /**
+   * Check if a conversation has a resumable session
+   * 
+   * @param {string} chatId - The conversation ID
+   * @returns {boolean}
+   */
+  async isResumable(chatId) {
+    await this.init();
+    
+    const conv = this.data.conversations[chatId];
+    return conv && conv.sessionState === 'suspended';
+  }
+
+  /**
+   * Mark all active sessions as suspended (e.g., on server shutdown)
+   * 
+   * @returns {number} Number of sessions marked as suspended
+   */
+  async suspendAllSessions() {
+    await this.init();
+    
+    let count = 0;
+    for (const chatId in this.data.conversations) {
+      if (this.data.conversations[chatId].sessionState === 'active') {
+        this.data.conversations[chatId].sessionState = 'suspended';
+        this.data.conversations[chatId].lastSessionAt = Date.now();
+        this.data.conversations[chatId].suspendReason = 'server_shutdown';
+        count++;
+      }
+    }
+    
+    if (count > 0) {
+      await this.save();
+    }
+    
+    return count;
+  }
+
+  // ============ Phase 4: Session Configuration ============
+
+  /**
+   * Get session configuration
+   * 
+   * @returns {Object} Session configuration
+   */
+  async getSessionConfig() {
+    await this.init();
+    
+    // Return defaults if not set
+    return this.data.sessionConfig || {
+      inactivityTimeoutMs: 60 * 1000, // 60 seconds
+      maxConcurrentSessions: 20,
+      autoResumeEnabled: true
+    };
+  }
+
+  /**
+   * Update session configuration
+   * 
+   * @param {Object} config - Configuration options to update
+   * @returns {Object} Updated configuration
+   */
+  async updateSessionConfig(config) {
+    await this.init();
+    
+    if (!this.data.sessionConfig) {
+      this.data.sessionConfig = {
+        inactivityTimeoutMs: 60 * 1000,
+        maxConcurrentSessions: 20,
+        autoResumeEnabled: true
+      };
+    }
+    
+    // Validate and update each config option
+    if (config.inactivityTimeoutMs !== undefined) {
+      const timeout = parseInt(config.inactivityTimeoutMs);
+      if (timeout < 10000 || timeout > 3600000) {
+        throw new Error('inactivityTimeoutMs must be between 10000 (10s) and 3600000 (1hr)');
+      }
+      this.data.sessionConfig.inactivityTimeoutMs = timeout;
+    }
+    
+    if (config.maxConcurrentSessions !== undefined) {
+      const max = parseInt(config.maxConcurrentSessions);
+      if (max < 1 || max > 50) {
+        throw new Error('maxConcurrentSessions must be between 1 and 50');
+      }
+      this.data.sessionConfig.maxConcurrentSessions = max;
+    }
+    
+    if (config.autoResumeEnabled !== undefined) {
+      this.data.sessionConfig.autoResumeEnabled = !!config.autoResumeEnabled;
+    }
+    
+    await this.save();
+    return this.data.sessionConfig;
   }
 }

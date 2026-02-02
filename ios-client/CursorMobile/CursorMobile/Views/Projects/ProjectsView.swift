@@ -7,7 +7,6 @@ struct ProjectsView: View {
     @State private var error: String?
     @State private var showCreateSheet = false
     @State private var selectedProject: Project?
-    @State private var openingProject: String?
     
     var body: some View {
         NavigationStack {
@@ -67,10 +66,7 @@ struct ProjectsView: View {
     private var projectsList: some View {
         List {
             ForEach(projects) { project in
-                ProjectRow(
-                    project: project,
-                    isOpening: openingProject == project.id
-                ) {
+                ProjectRow(project: project) {
                     selectProject(project)
                 }
             }
@@ -125,30 +121,8 @@ struct ProjectsView: View {
     }
     
     private func selectProject(_ project: Project) {
-        openingProject = project.id
-        
-        Task {
-            guard let api = authManager.createAPIService() else {
-                openingProject = nil
-                return
-            }
-            
-            do {
-                // Open project on server
-                try await api.openProject(id: project.id)
-                
-                // Navigate to project detail view
-                await MainActor.run {
-                    selectedProject = project
-                    openingProject = nil
-                }
-            } catch {
-                await MainActor.run {
-                    self.error = error.localizedDescription
-                    openingProject = nil
-                }
-            }
-        }
+        // Navigate to project detail view
+        selectedProject = project
     }
     
     private func createProject(name: String, template: String?) async {
@@ -166,7 +140,6 @@ struct ProjectsView: View {
 
 struct ProjectRow: View {
     let project: Project
-    let isOpening: Bool
     let onSelect: () -> Void
     
     var body: some View {
@@ -196,19 +169,13 @@ struct ProjectRow: View {
                 
                 Spacer()
                 
-                if isOpening {
-                    ProgressView()
-                        .padding(.trailing, 8)
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
-        .disabled(isOpening)
     }
     
     private func formatDate(_ date: Date) -> String {

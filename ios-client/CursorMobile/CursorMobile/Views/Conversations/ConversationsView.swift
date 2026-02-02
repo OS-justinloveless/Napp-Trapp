@@ -2,10 +2,15 @@ import SwiftUI
 
 struct ConversationsView: View {
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var webSocketManager: WebSocketManager
+    @StateObject private var sessionManager = ChatSessionManager.shared
+    @StateObject private var chatSettings = ChatSettingsManager.shared
+    
     @State private var conversations: [Conversation] = []
     @State private var isLoading = true
     @State private var error: String?
     @State private var selectedConversation: Conversation?
+    @State private var selectedResumableSession: Conversation?
     
     var body: some View {
         NavigationStack {
@@ -16,7 +21,7 @@ struct ConversationsView: View {
                     ErrorView(message: error) {
                         loadConversations()
                     }
-                } else if conversations.isEmpty {
+                } else if conversations.isEmpty && sessionManager.resumableSessions.isEmpty {
                     EmptyStateView(
                         icon: "bubble.left.and.bubble.right",
                         title: "No Conversations",
@@ -39,24 +44,62 @@ struct ConversationsView: View {
             .navigationDestination(item: $selectedConversation) { conversation in
                 ConversationDetailView(conversation: conversation)
             }
+            .navigationDestination(item: $selectedResumableSession) { conversation in
+                ChatSessionView(conversation: conversation, workspaceId: conversation.workspaceId)
+            }
         }
         .onAppear {
             if conversations.isEmpty {
                 loadConversations()
             }
+            loadResumableSessions()
         }
     }
     
     private var conversationsList: some View {
         List {
-            ForEach(conversations) { conversation in
-                ConversationRow(conversation: conversation) {
-                    selectedConversation = conversation
+            // Resumable Sessions Section
+            if !sessionManager.resumableSessions.isEmpty {
+                Section {
+                    ForEach(sessionManager.resumableSessions) { session in
+                        ResumableSessionRow(conversation: session) {
+                            selectedResumableSession = session
+                        }
+                    }
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("Resume Session")
+                            .textCase(.uppercase)
+                    }
+                } footer: {
+                    Text("These sessions were suspended due to inactivity and can be resumed.")
+                        .font(.caption)
+                }
+            }
+            
+            // All Conversations Section
+            Section {
+                ForEach(conversations) { conversation in
+                    ConversationRow(conversation: conversation) {
+                        // Use ChatSessionView for mobile-source chats OR when terminal style is selected
+                        if conversation.source == "mobile" || chatSettings.chatViewStyle == .terminal {
+                            selectedResumableSession = conversation
+                        } else {
+                            selectedConversation = conversation
+                        }
+                    }
+                }
+            } header: {
+                if !sessionManager.resumableSessions.isEmpty {
+                    Text("All Conversations")
                 }
             }
         }
         .refreshable {
             await refreshConversations()
+            await refreshResumableSessions()
         }
     }
     
@@ -102,6 +145,105 @@ struct ConversationsView: View {
                 print("[ConversationsView] Failed to refresh conversations, using cached data: \(error)")
             }
         }
+    }
+    
+    private func loadResumableSessions() {
+        guard let serverUrl = authManager.serverUrl,
+              let token = authManager.token else {
+            return
+        }
+        
+        Task {
+            await sessionManager.fetchResumableSessions(baseURL: serverUrl, token: token)
+        }
+    }
+    
+    private func refreshResumableSessions() async {
+        guard let serverUrl = authManager.serverUrl,
+              let token = authManager.token else {
+            return
+        }
+        
+        await sessionManager.fetchResumableSessions(baseURL: serverUrl, token: token)
+    }
+}
+
+// MARK: - Resumable Session Row
+
+struct ResumableSessionRow: View {
+    let conversation: Conversation
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Session icon with pause indicator
+                ZStack(alignment: .bottomTrailing) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 40)
+                    
+                    Image(systemName: "pause.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                        .background(Circle().fill(Color.orange))
+                        .offset(x: 4, y: 4)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(conversation.title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    
+                    HStack(spacing: 4) {
+                        // Suspended badge
+                        Text("Suspended")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundColor(.orange)
+                            .cornerRadius(4)
+                        
+                        // Tool badge
+                        if let tool = conversation.tool {
+                            HStack(spacing: 2) {
+                                Image(systemName: tool.icon)
+                                    .font(.system(size: 8))
+                                Text(tool.displayName)
+                                    .font(.caption2)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(tool.color.opacity(0.2))
+                            .foregroundColor(tool.color)
+                            .cornerRadius(4)
+                        }
+                        
+                        if let projectName = conversation.projectName {
+                            Text(projectName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Text("Tap to resume")
+                        .font(.caption2)
+                        .foregroundColor(.accentColor)
+                }
+                
+                Spacer()
+                
+                // Resume arrow
+                Image(systemName: "play.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.accentColor)
+            }
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
     }
 }
 
