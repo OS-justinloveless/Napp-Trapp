@@ -1,0 +1,40 @@
+meta {
+  name: Send Prompt
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/conversations/tmux-mobile-project:1/prompt
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "prompt": "Please analyze the authentication flow and suggest improvements",
+    "delay": 500
+  }
+}
+
+docs {
+  # Send Prompt
+  
+  Send a prompt to an existing chat window.
+  
+  ## Path Parameters
+  - `terminalId` (string): Terminal ID (format: tmux-{sessionName}:{windowIndex})
+  
+  ## Request Body
+  - `prompt` (string, required): The prompt to send
+  - `delay` (number, optional): Delay in ms before sending (default: 500)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "terminalId": "tmux-mobile-project:1",
+    "message": "Prompt will be sent to the chat window"
+  }
+  ```
+}

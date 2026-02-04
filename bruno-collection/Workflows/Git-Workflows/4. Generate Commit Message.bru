@@ -1,0 +1,29 @@
+meta {
+  name: 4. Generate Commit Message
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/generate-commit-message
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Git Workflow - Step 4: Generate Commit Message
+  
+  Use cursor-agent to analyze staged changes and generate a commit message.
+  
+  **Requirements:**
+  - cursor-agent CLI must be installed
+  - Files must be staged first
+  
+  ## Workflow: Stage, Commit, Push
+  1. Check Git Status - See changed files
+  2. View Diff - Review changes before staging
+  3. Stage Files - Add files to staging area
+  4. **Generate Commit Message** (current) - Let AI write the message
+  5. Commit Changes - Create the commit
+  6. Push to Remote - Push to GitHub
+}

@@ -1,0 +1,45 @@
+meta {
+  name: List Chats
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/conversations?projectPath={{projectPath}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  projectPath: {{projectPath}}
+}
+
+docs {
+  # List Chats
+  
+  Get list of all chat windows (tmux) for a project.
+  
+  ## Query Parameters
+  - `projectPath` (string): Absolute path to the project
+  - `projectId` (string): Alternative: Base64-encoded project path
+  
+  ## Response
+  ```json
+  {
+    "chats": [
+      {
+        "id": "tmux-mobile-project:1",
+        "terminalId": "tmux-mobile-project:1",
+        "windowName": "chat-claude-auth-bug",
+        "tool": "claude",
+        "topic": "auth-bug",
+        "sessionName": "mobile-project",
+        "windowIndex": 1,
+        "type": "chat",
+        "active": true
+      }
+    ],
+    "total": 1
+  }
+  ```
+}

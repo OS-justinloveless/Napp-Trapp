@@ -1,0 +1,30 @@
+meta {
+  name: Delete Terminal
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:1
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Delete Terminal
+  
+  Kill/close a terminal session.
+  
+  ## Path Parameters
+  - `id` (string): Terminal ID
+  
+  ## Response
+  ```json
+  {
+    "success": true
+  }
+  ```
+  
+  ## Note
+  Cursor IDE terminals cannot be deleted via API.
+}

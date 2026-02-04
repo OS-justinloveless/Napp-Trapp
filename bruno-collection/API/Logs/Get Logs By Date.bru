@@ -1,0 +1,39 @@
+meta {
+  name: Get Logs By Date
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/logs/date/2024-01-15?limit=200&level=info
+  body: none
+  auth: inherit
+}
+
+params:query {
+  limit: 200
+  level: info
+}
+
+docs {
+  # Get Logs By Date
+  
+  Get logs for a specific date.
+  
+  ## Path Parameters
+  - `date` (string): Date in YYYY-MM-DD format
+  
+  ## Query Parameters
+  - `limit` (number): Number of logs to return (default: 200, max: 1000)
+  - `level` (string): Minimum log level
+  - `category` (string): Filter by category
+  
+  ## Response
+  ```json
+  {
+    "logs": [...],
+    "count": 150,
+    "date": "2024-01-15"
+  }
+  ```
+}

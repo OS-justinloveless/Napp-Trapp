@@ -1,0 +1,34 @@
+meta {
+  name: Create Directory
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/files/mkdir
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "dirPath": "{{projectPath}}/new-directory"
+  }
+}
+
+docs {
+  # Create Directory
+  
+  Create a new directory. Creates parent directories if needed.
+  
+  ## Request Body
+  - `dirPath` (string, required): Absolute path for the new directory
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "path": "/path/to/new-directory"
+  }
+  ```
+}

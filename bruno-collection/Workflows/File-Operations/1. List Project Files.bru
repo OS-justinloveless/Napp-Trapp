@@ -1,0 +1,27 @@
+meta {
+  name: 1. List Project Files
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/files/list?dirPath={{projectPath}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  dirPath: {{projectPath}}
+}
+
+docs {
+  # File Operations Workflow - Step 1: List Files
+  
+  First, list the project directory to see available files.
+  
+  ## Workflow Steps
+  1. **List Project Files** (current) - See what's in the project
+  2. Read a File - Open a specific file
+  3. Edit the File - Make modifications
+  4. Verify Changes - Check the diff
+}

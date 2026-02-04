@@ -1,0 +1,40 @@
+meta {
+  name: Get Tools
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/conversations/tools
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Supported Tools
+  
+  Get list of supported AI CLI tools with availability status.
+  
+  ## Response
+  ```json
+  {
+    "tools": [
+      {
+        "id": "claude",
+        "available": true,
+        "version": "1.0.0"
+      },
+      {
+        "id": "cursor-agent",
+        "available": true,
+        "version": "2.0.0"
+      },
+      {
+        "id": "gemini",
+        "available": false,
+        "version": null
+      }
+    ]
+  }
+  ```
+}

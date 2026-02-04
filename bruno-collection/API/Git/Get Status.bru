@@ -1,0 +1,36 @@
+meta {
+  name: Get Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Git Status
+  
+  Get git status for a project.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Response
+  ```json
+  {
+    "branch": "main",
+    "ahead": 0,
+    "behind": 0,
+    "staged": ["src/file.js"],
+    "unstaged": ["README.md"],
+    "untracked": ["new-file.txt"],
+    "conflicts": []
+  }
+  ```
+}

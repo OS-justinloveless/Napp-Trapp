@@ -1,0 +1,50 @@
+meta {
+  name: Get All Suggestions
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/suggestions/{{projectId}}?type=all&query=
+  body: none
+  auth: inherit
+}
+
+params:query {
+  type: all
+  query: 
+}
+
+docs {
+  # Get All Suggestions
+  
+  Get autocomplete suggestions for @ and / triggers.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `type` (string): Filter by type - rules, agents, commands, skills, files, or all (default: all)
+  - `query` (string): Search filter string
+  
+  ## Response
+  ```json
+  {
+    "suggestions": [
+      {
+        "type": "rule",
+        "name": "my-rule",
+        "path": ".cursor/rules/my-rule.mdc",
+        "description": "Rule description"
+      },
+      {
+        "type": "agent",
+        "name": "code-reviewer",
+        "description": "Reviews code"
+      }
+    ],
+    "total": 10,
+    "projectPath": "/path/to/project"
+  }
+  ```
+}

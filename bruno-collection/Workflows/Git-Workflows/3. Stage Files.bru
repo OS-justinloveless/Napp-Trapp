@@ -1,0 +1,35 @@
+meta {
+  name: 3. Stage Files
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/stage
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "files": ["."]
+  }
+}
+
+docs {
+  # Git Workflow - Step 3: Stage Files
+  
+  Add files to the staging area for commit.
+  
+  ## Options
+  - Stage all: `{"files": ["."]}`
+  - Stage specific: `{"files": ["src/file.js", "README.md"]}`
+  
+  ## Workflow: Stage, Commit, Push
+  1. Check Git Status - See changed files
+  2. View Diff - Review changes before staging
+  3. **Stage Files** (current) - Add files to staging area
+  4. Generate Commit Message - Let AI write the message
+  5. Commit Changes - Create the commit
+  6. Push to Remote - Push to GitHub
+}

@@ -1,0 +1,30 @@
+meta {
+  name: Delete Chat
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/conversations/tmux-mobile-project:1
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Delete Chat
+  
+  Close/delete a chat window.
+  
+  ## Path Parameters
+  - `terminalId` (string): Terminal ID (format: tmux-{sessionName}:{windowIndex})
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "terminalId": "tmux-mobile-project:1",
+    "windowName": "chat-claude-auth-bug",
+    "message": "Chat window closed"
+  }
+  ```
+}

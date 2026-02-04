@@ -1,0 +1,37 @@
+meta {
+  name: 5. Get Chat Status
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/conversations/tmux-mobile-project:1
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Chat Workflow - Step 5: Get Chat Status
+  
+  Check the status of the chat session.
+  
+  **Note:** Replace the terminal ID with the one from Step 3.
+  
+  For real-time output, connect to the WebSocket at:
+  `ws://localhost:3847/ws?token=YOUR_TOKEN`
+  
+  And send:
+  ```json
+  {
+    "type": "terminal:attach",
+    "terminalId": "tmux-mobile-project:1"
+  }
+  ```
+  
+  ## Workflow Steps
+  1. Check Tool Availability - See which tools are installed
+  2. List Existing Chats - See current chat sessions
+  3. Create New Chat - Start a new AI chat
+  4. Send Initial Prompt - Give the AI a task
+  5. **Monitor via Terminal** (current) - Watch progress
+}

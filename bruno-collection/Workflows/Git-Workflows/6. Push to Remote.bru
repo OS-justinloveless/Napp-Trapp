@@ -1,0 +1,35 @@
+meta {
+  name: 6. Push to Remote
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/push
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "remote": "origin",
+    "branch": null
+  }
+}
+
+docs {
+  # Git Workflow - Step 6: Push to Remote
+  
+  Push the committed changes to the remote repository.
+  
+  ## Workflow: Stage, Commit, Push
+  1. Check Git Status - See changed files
+  2. View Diff - Review changes before staging
+  3. Stage Files - Add files to staging area
+  4. Generate Commit Message - Let AI write the message
+  5. Commit Changes - Create the commit
+  6. **Push to Remote** (current) - Push to GitHub
+  
+  ## Done!
+  Your changes are now on the remote repository.
+}

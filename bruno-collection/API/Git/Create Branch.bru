@@ -1,0 +1,43 @@
+meta {
+  name: Create Branch
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/branch
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "new-feature-branch",
+    "checkout": true
+  }
+}
+
+docs {
+  # Create Branch
+  
+  Create a new branch.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `name` (string, required): New branch name
+  - `checkout` (boolean, optional): Switch to the new branch (default: true)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "branch": "new-feature-branch",
+    "checkedOut": true
+  }
+  ```
+}

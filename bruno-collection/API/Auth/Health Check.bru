@@ -1,0 +1,25 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  # Health Check
+  
+  Check if the server is running. This endpoint does not require authentication.
+  
+  ## Response
+  ```json
+  {
+    "status": "ok",
+    "timestamp": "2024-01-15T10:30:00.000Z"
+  }
+  ```
+}

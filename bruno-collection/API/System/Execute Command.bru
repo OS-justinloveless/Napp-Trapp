@@ -1,0 +1,45 @@
+meta {
+  name: Execute Command
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/system/exec
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "command": "echo 'Hello World'",
+    "cwd": "{{projectPath}}"
+  }
+}
+
+docs {
+  # Execute Command
+  
+  Execute a terminal command with safety checks.
+  
+  ## Request Body
+  - `command` (string, required): Command to execute
+  - `cwd` (string, optional): Working directory (default: home directory)
+  
+  ## Blocked Commands
+  - rm -rf /
+  - sudo
+  - mkfs
+  - dd if=
+  - > /dev/
+  - chmod 777
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "stdout": "Hello World\n",
+    "stderr": ""
+  }
+  ```
+}

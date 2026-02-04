@@ -1,0 +1,45 @@
+meta {
+  name: iOS Devices
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/system/ios-devices
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get iOS Devices
+  
+  Get list of iOS devices (simulators and physical devices). macOS only.
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "devices": [
+      {
+        "name": "iPhone 16",
+        "udid": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+        "state": "Shutdown",
+        "iosVersion": "18.0",
+        "isBooted": false,
+        "isPhysicalDevice": false,
+        "deviceType": "simulator"
+      },
+      {
+        "name": "Justin's iPhone",
+        "udid": "00008030-001234567890802E",
+        "state": "connected",
+        "iosVersion": "17.0",
+        "isBooted": true,
+        "isPhysicalDevice": true,
+        "deviceType": "physical",
+        "connectionType": "usb"
+      }
+    ]
+  }
+  ```
+}

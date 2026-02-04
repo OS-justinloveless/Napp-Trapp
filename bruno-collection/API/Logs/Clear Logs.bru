@@ -1,0 +1,25 @@
+meta {
+  name: Clear Logs
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/logs
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Clear Logs
+  
+  Clear all logs. For debugging/testing purposes.
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "message": "All logs cleared"
+  }
+  ```
+}

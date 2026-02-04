@@ -1,0 +1,40 @@
+meta {
+  name: Unstage Files
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/unstage
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "files": ["src/file.js"]
+  }
+}
+
+docs {
+  # Unstage Files
+  
+  Unstage files from the staging area.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `files` (string[], required): Array of file paths to unstage
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "unstaged": ["src/file.js"]
+  }
+  ```
+}

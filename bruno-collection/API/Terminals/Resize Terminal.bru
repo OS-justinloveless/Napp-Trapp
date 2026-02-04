@@ -1,0 +1,41 @@
+meta {
+  name: Resize Terminal
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:0/resize
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "cols": 120,
+    "rows": 40
+  }
+}
+
+docs {
+  # Resize Terminal
+  
+  Resize a terminal window.
+  
+  ## Path Parameters
+  - `id` (string): Terminal ID
+  
+  ## Request Body
+  - `cols` (number, required): New column count
+  - `rows` (number, required): New row count
+  
+  ## Response
+  ```json
+  {
+    "success": true
+  }
+  ```
+  
+  ## Note
+  Cursor IDE terminals don't support resize via API.
+}

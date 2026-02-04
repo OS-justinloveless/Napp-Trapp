@@ -1,0 +1,41 @@
+meta {
+  name: Get Branches
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/branches
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Branches
+  
+  Get list of git branches for a project.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Response
+  ```json
+  {
+    "branches": [
+      {
+        "name": "main",
+        "current": true,
+        "remote": "origin/main"
+      },
+      {
+        "name": "feature-branch",
+        "current": false,
+        "remote": null
+      }
+    ]
+  }
+  ```
+}

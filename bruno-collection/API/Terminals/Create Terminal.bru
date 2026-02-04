@@ -1,0 +1,50 @@
+meta {
+  name: Create Terminal
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/terminals
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "type": "tmux",
+    "projectPath": "{{projectPath}}",
+    "cwd": "{{projectPath}}",
+    "windowName": "dev-terminal",
+    "cols": 120,
+    "rows": 30
+  }
+}
+
+docs {
+  # Create Terminal
+  
+  Create a new terminal session (PTY or tmux).
+  
+  ## Request Body
+  - `type` (string): Terminal type - 'pty' (default) or 'tmux'
+  - `projectPath` (string): Required for tmux sessions
+  - `cwd` (string, optional): Starting directory
+  - `shell` (string, optional): Shell to use (for PTY)
+  - `windowName` (string, optional): Window name (for tmux)
+  - `cols` (number, optional): Terminal columns (default: 80)
+  - `rows` (number, optional): Terminal rows (default: 24)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "terminal": {
+      "id": "tmux-mobile-project:1",
+      "sessionName": "mobile-project",
+      "windowIndex": 1,
+      "windowName": "dev-terminal"
+    }
+  }
+  ```
+}

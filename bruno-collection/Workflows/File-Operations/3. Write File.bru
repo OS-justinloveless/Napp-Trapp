@@ -1,0 +1,30 @@
+meta {
+  name: 3. Write File
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/files/write
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filePath": "{{projectPath}}/README.md",
+    "content": "# Updated README\n\nThis file was updated via the API.\n\n## Original Content\n\n[Previous content here]"
+  }
+}
+
+docs {
+  # File Operations Workflow - Step 3: Write File
+  
+  Update the file with new content. The response includes a diff.
+  
+  ## Workflow Steps
+  1. List Project Files - See what's in the project
+  2. Read a File - Open a specific file
+  3. **Edit the File** (current) - Make modifications
+  4. Verify Changes - Check the diff
+}

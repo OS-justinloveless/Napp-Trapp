@@ -1,0 +1,37 @@
+meta {
+  name: Move File
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/files/move
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "sourcePath": "{{projectPath}}/file.txt",
+    "destinationPath": "{{projectPath}}/subdir/file.txt"
+  }
+}
+
+docs {
+  # Move File
+  
+  Move a file or directory to a new location.
+  
+  ## Request Body
+  - `sourcePath` (string, required): Current absolute path
+  - `destinationPath` (string, required): New absolute path
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "sourcePath": "/path/to/source",
+    "destinationPath": "/path/to/destination"
+  }
+  ```
+}

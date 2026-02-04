@@ -1,0 +1,38 @@
+meta {
+  name: 2. Create Project
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/projects
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "my-new-project",
+    "path": "~/Code",
+    "template": null,
+    "createGitRepo": true
+  }
+}
+
+docs {
+  # Project Setup Workflow - Step 2: Create Project
+  
+  Create a new project with optional GitHub repository.
+  
+  ## Options
+  - `name` - Project folder name
+  - `path` - Parent directory (supports ~)
+  - `createGitRepo` - Initialize git and create GitHub repo
+  
+  ## Workflow: Set Up New Project
+  1. List Projects - See existing projects
+  2. **Create New Project** (current) - Create a fresh project
+  3. Open in Cursor - Launch the IDE
+  4. Get Project Tree - Explore structure
+  5. Start AI Chat - Begin development with AI
+}

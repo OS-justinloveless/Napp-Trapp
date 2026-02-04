@@ -1,0 +1,37 @@
+meta {
+  name: 4. Send Command
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:1/input
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "data": "ls -la && git status\n"
+  }
+}
+
+docs {
+  # Terminal Workflow - Step 4: Send Command
+  
+  Send commands to the terminal.
+  
+  **Note:** Replace the terminal ID with the one from Step 3.
+  
+  ## Tips
+  - Include `\n` at the end to "press Enter"
+  - Chain commands with `&&` or `;`
+  - For real-time output, use WebSocket
+  
+  ## Workflow: Create and Use Terminal
+  1. Check Tmux Status - Verify tmux is available
+  2. List Existing Terminals - See current terminals
+  3. Create New Terminal - Start a new shell
+  4. **Send Commands** (current) - Execute commands
+  5. Cleanup - Close terminals when done
+}

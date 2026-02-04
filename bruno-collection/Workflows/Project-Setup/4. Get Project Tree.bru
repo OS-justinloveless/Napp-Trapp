@@ -1,0 +1,28 @@
+meta {
+  name: 4. Get Project Tree
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/projects/{{projectId}}/tree?depth=3
+  body: none
+  auth: inherit
+}
+
+params:query {
+  depth: 3
+}
+
+docs {
+  # Project Setup Workflow - Step 4: Get Project Tree
+  
+  Explore the project file structure.
+  
+  ## Workflow: Set Up New Project
+  1. List Projects - See existing projects
+  2. Create New Project - Create a fresh project
+  3. Open in Cursor - Launch the IDE
+  4. **Get Project Tree** (current) - Explore structure
+  5. Start AI Chat - Begin development with AI
+}

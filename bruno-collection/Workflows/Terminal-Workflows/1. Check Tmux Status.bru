@@ -1,0 +1,24 @@
+meta {
+  name: 1. Check Tmux Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/terminals/tmux/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Terminal Workflow - Step 1: Check Tmux Status
+  
+  Verify tmux is available and see existing sessions.
+  
+  ## Workflow: Create and Use Terminal
+  1. **Check Tmux Status** (current) - Verify tmux is available
+  2. List Existing Terminals - See current terminals
+  3. Create New Terminal - Start a new shell
+  4. Send Commands - Execute commands
+  5. Cleanup - Close terminals when done
+}

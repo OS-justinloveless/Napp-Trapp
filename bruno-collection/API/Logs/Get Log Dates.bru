@@ -1,0 +1,28 @@
+meta {
+  name: Get Log Dates
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/logs/dates
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Log Dates
+  
+  Get available log dates for historical logs.
+  
+  ## Response
+  ```json
+  {
+    "dates": [
+      "2024-01-15",
+      "2024-01-14",
+      "2024-01-13"
+    ]
+  }
+  ```
+}

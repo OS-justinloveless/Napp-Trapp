@@ -1,0 +1,40 @@
+meta {
+  name: Clean Files
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/clean
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "files": ["new-file.txt"]
+  }
+}
+
+docs {
+  # Clean Files
+  
+  Delete untracked files (undo adding new files).
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `files` (string[], required): Array of untracked files to delete
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "cleaned": ["new-file.txt"]
+  }
+  ```
+}

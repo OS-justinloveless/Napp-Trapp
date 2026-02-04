@@ -1,0 +1,26 @@
+meta {
+  name: Cursor Status
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/system/cursor-status
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Cursor Status
+  
+  Check if Cursor IDE is running.
+  
+  ## Response
+  ```json
+  {
+    "isRunning": true,
+    "version": null,
+    "platform": "darwin"
+  }
+  ```
+}

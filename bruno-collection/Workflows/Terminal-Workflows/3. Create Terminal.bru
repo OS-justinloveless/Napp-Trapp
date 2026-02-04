@@ -1,0 +1,39 @@
+meta {
+  name: 3. Create Terminal
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/terminals
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "type": "tmux",
+    "projectPath": "{{projectPath}}",
+    "cwd": "{{projectPath}}",
+    "windowName": "dev-shell",
+    "cols": 120,
+    "rows": 30
+  }
+}
+
+docs {
+  # Terminal Workflow - Step 3: Create Terminal
+  
+  Create a new tmux terminal for the project.
+  
+  ## Terminal Types
+  - `tmux` - Recommended, persists across reconnections
+  - `pty` - Simpler, but dies when connection closes
+  
+  ## Workflow: Create and Use Terminal
+  1. Check Tmux Status - Verify tmux is available
+  2. List Existing Terminals - See current terminals
+  3. **Create New Terminal** (current) - Start a new shell
+  4. Send Commands - Execute commands
+  5. Cleanup - Close terminals when done
+}

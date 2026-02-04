@@ -1,0 +1,38 @@
+meta {
+  name: 4. Send Initial Prompt
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/conversations/tmux-mobile-project:1/prompt
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "prompt": "Please review the codebase and identify any potential security vulnerabilities or code quality issues.",
+    "delay": 1000
+  }
+}
+
+docs {
+  # Chat Workflow - Step 4: Send Initial Prompt
+  
+  Send a prompt to the newly created chat session.
+  
+  **Note:** Replace the terminal ID with the one returned from Step 3.
+  
+  ## Workflow Steps
+  1. Check Tool Availability - See which tools are installed
+  2. List Existing Chats - See current chat sessions
+  3. Create New Chat - Start a new AI chat
+  4. **Send Initial Prompt** (current) - Give the AI a task
+  5. Monitor via Terminal - Watch progress via WebSocket
+  
+  ## Tips
+  - Use `delay` to give the CLI time to initialize
+  - For complex tasks, be specific in your prompt
+  - You can also set `initialPrompt` when creating the chat
+}

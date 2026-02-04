@@ -1,0 +1,40 @@
+meta {
+  name: Send Input
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:0/input
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "data": "ls -la\n"
+  }
+}
+
+docs {
+  # Send Terminal Input
+  
+  Send input/keystrokes to a terminal.
+  
+  ## Path Parameters
+  - `id` (string): Terminal ID
+  
+  ## Request Body
+  - `data` (string, required): Input data to send (include \n for Enter)
+  - `projectPath` (string): Required for Cursor IDE terminals
+  
+  ## Response
+  ```json
+  {
+    "success": true
+  }
+  ```
+  
+  ## Note
+  Cursor IDE terminals have limited input support due to macOS security restrictions.
+}

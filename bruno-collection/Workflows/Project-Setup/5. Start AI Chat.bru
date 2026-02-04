@@ -1,0 +1,40 @@
+meta {
+  name: 5. Start AI Chat
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/conversations
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "projectId": "{{projectId}}",
+    "tool": "claude",
+    "topic": "project-setup",
+    "mode": "agent",
+    "initialPrompt": "Please analyze this project structure and help me set up the development environment. What dependencies do we need and what's the best way to organize the codebase?"
+  }
+}
+
+docs {
+  # Project Setup Workflow - Step 5: Start AI Chat
+  
+  Begin development with an AI assistant.
+  
+  The AI will analyze the project and help set things up.
+  
+  ## Workflow: Set Up New Project
+  1. List Projects - See existing projects
+  2. Create New Project - Create a fresh project
+  3. Open in Cursor - Launch the IDE
+  4. Get Project Tree - Explore structure
+  5. **Start AI Chat** (current) - Begin development with AI
+  
+  ## What's Next?
+  - Connect via WebSocket to see AI responses
+  - Use the Chat Workflows for more complex interactions
+}

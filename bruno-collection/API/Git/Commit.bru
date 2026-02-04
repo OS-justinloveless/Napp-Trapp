@@ -1,0 +1,43 @@
+meta {
+  name: Commit
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/commit
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "message": "feat: add new feature",
+    "files": null
+  }
+}
+
+docs {
+  # Commit
+  
+  Create a git commit.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `message` (string, required): Commit message
+  - `files` (string[], optional): Specific files to commit (commits all staged if not provided)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "hash": "abc1234",
+    "message": "feat: add new feature"
+  }
+  ```
+}

@@ -1,0 +1,40 @@
+meta {
+  name: Checkout Branch
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/checkout
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "branch": "feature-branch"
+  }
+}
+
+docs {
+  # Checkout Branch
+  
+  Switch to a different branch.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `branch` (string, required): Branch name to checkout
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "branch": "feature-branch"
+  }
+  ```
+}

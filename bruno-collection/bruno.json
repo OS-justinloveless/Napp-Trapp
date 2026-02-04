@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Napp Trapp API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

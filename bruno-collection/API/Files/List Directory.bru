@@ -1,0 +1,46 @@
+meta {
+  name: List Directory
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/files/list?dirPath={{projectPath}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  dirPath: {{projectPath}}
+}
+
+docs {
+  # List Directory
+  
+  List contents of a directory. Hidden files (starting with .) are excluded.
+  
+  ## Query Parameters
+  - `dirPath` (string, required): Absolute path to the directory
+  
+  ## Response
+  ```json
+  {
+    "items": [
+      {
+        "name": "src",
+        "path": "/path/to/project/src",
+        "isDirectory": true,
+        "size": 0,
+        "modified": "2024-01-15T10:30:00.000Z"
+      },
+      {
+        "name": "README.md",
+        "path": "/path/to/project/README.md",
+        "isDirectory": false,
+        "size": 1234,
+        "modified": "2024-01-15T10:30:00.000Z"
+      }
+    ]
+  }
+  ```
+}

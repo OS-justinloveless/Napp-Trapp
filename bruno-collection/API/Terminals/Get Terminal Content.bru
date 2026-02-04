@@ -1,0 +1,44 @@
+meta {
+  name: Get Terminal Content
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/terminals/cursor-1/content?projectPath={{projectPath}}&tail=100
+  body: none
+  auth: inherit
+}
+
+params:query {
+  projectPath: {{projectPath}}
+  tail: 100
+}
+
+docs {
+  # Get Terminal Content
+  
+  Get terminal output content (Cursor IDE terminals only).
+  
+  ## Path Parameters
+  - `id` (string): Terminal ID (cursor-N format)
+  
+  ## Query Parameters
+  - `projectPath` (string, required): Project path
+  - `tail` (number, optional): Number of lines from the end
+  
+  ## Response
+  ```json
+  {
+    "id": "cursor-1",
+    "content": "terminal output here...",
+    "metadata": {
+      "cwd": "/path/to/project",
+      "pid": 12345
+    }
+  }
+  ```
+  
+  ## Note
+  PTY terminals don't support this endpoint - their output is streamed via WebSocket.
+}

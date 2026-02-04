@@ -1,0 +1,48 @@
+meta {
+  name: List Terminals
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/terminals?projectPath={{projectPath}}&source=all
+  body: none
+  auth: inherit
+}
+
+params:query {
+  projectPath: {{projectPath}}
+  source: all
+}
+
+docs {
+  # List Terminals
+  
+  List all terminal sessions (PTY, tmux, and Cursor IDE terminals).
+  
+  ## Query Parameters
+  - `projectPath` (string): Required for Cursor IDE and tmux terminals
+  - `includeHistory` (boolean): Include old/inactive terminals (default: false)
+  - `source` (string): Filter by source - 'cursor-ide', 'mobile-pty', 'tmux', or 'all' (default: 'all')
+  
+  ## Response
+  ```json
+  {
+    "terminals": [
+      {
+        "id": "pty-1",
+        "name": "Terminal 1",
+        "source": "mobile-pty",
+        "active": true
+      },
+      {
+        "id": "tmux-mobile-project:0",
+        "name": "shell",
+        "source": "tmux",
+        "active": true
+      }
+    ],
+    "count": 2
+  }
+  ```
+}

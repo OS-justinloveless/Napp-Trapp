@@ -1,0 +1,32 @@
+meta {
+  name: 2. View Diff
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/diff?file=README.md&staged=false
+  body: none
+  auth: inherit
+}
+
+params:query {
+  file: README.md
+  staged: false
+}
+
+docs {
+  # Git Workflow - Step 2: View Diff
+  
+  Review the changes in a specific file before staging.
+  
+  **Note:** Change the `file` parameter to the file you want to diff.
+  
+  ## Workflow: Stage, Commit, Push
+  1. Check Git Status - See changed files
+  2. **View Diff** (current) - Review changes before staging
+  3. Stage Files - Add files to staging area
+  4. Generate Commit Message - Let AI write the message
+  5. Commit Changes - Create the commit
+  6. Push to Remote - Push to GitHub
+}

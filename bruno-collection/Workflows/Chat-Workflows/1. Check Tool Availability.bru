@@ -1,0 +1,24 @@
+meta {
+  name: 1. Check Tool Availability
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/conversations/tools/availability
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Chat Workflow - Step 1: Check Tool Availability
+  
+  Before starting a chat, check which AI tools are available.
+  
+  ## Workflow Steps
+  1. **Check Tool Availability** (current) - See which tools are installed
+  2. List Existing Chats - See current chat sessions
+  3. Create New Chat - Start a new AI chat
+  4. Send Initial Prompt - Give the AI a task
+  5. Monitor via Terminal - Watch progress via WebSocket
+}

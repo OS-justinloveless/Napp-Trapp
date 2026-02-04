@@ -1,0 +1,32 @@
+meta {
+  name: Delete File
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/files/delete?filePath={{projectPath}}/temp-file.txt
+  body: none
+  auth: inherit
+}
+
+params:query {
+  filePath: {{projectPath}}/temp-file.txt
+}
+
+docs {
+  # Delete File
+  
+  Delete a file.
+  
+  ## Query Parameters
+  - `filePath` (string, required): Absolute path to the file to delete
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "deleted": "/path/to/file.txt"
+  }
+  ```
+}

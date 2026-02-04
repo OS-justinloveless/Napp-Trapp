@@ -1,0 +1,44 @@
+meta {
+  name: Get Terminal
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:0?projectPath={{projectPath}}&includeContent=true
+  body: none
+  auth: inherit
+}
+
+params:query {
+  projectPath: {{projectPath}}
+  includeContent: true
+}
+
+docs {
+  # Get Terminal
+  
+  Get terminal metadata and optionally content.
+  
+  ## Path Parameters
+  - `id` (string): Terminal ID
+  
+  ## Query Parameters
+  - `projectPath` (string): Required for Cursor IDE and tmux terminals
+  - `includeContent` (boolean): Include terminal output content (default: true)
+  
+  ## Response
+  ```json
+  {
+    "terminal": {
+      "id": "tmux-mobile-project:0",
+      "name": "shell",
+      "sessionName": "mobile-project",
+      "windowIndex": 0,
+      "active": true,
+      "source": "tmux"
+    },
+    "content": "terminal output here..."
+  }
+  ```
+}

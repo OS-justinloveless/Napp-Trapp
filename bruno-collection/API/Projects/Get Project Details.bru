@@ -1,0 +1,32 @@
+meta {
+  name: Get Project Details
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/projects/{{projectId}}
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Project Details
+  
+  Get detailed information about a specific project.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Response
+  ```json
+  {
+    "project": {
+      "id": "base64-encoded-path",
+      "name": "my-project",
+      "path": "/Users/user/Code/my-project",
+      "lastOpened": "2024-01-15T10:30:00.000Z"
+    }
+  }
+  ```
+}

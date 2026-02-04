@@ -1,0 +1,28 @@
+meta {
+  name: Get QR Code
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/qr
+  body: none
+  auth: none
+}
+
+docs {
+  # Get QR Code
+  
+  Get connection QR code data for mobile app pairing. No authentication required.
+  
+  ## Response
+  ```json
+  {
+    "qr": "data:image/png;base64,...",
+    "connectionUrl": "http://192.168.1.100:3847/?token=xxx",
+    "url": "http://192.168.1.100:3847",
+    "ip": "192.168.1.100",
+    "port": 3847
+  }
+  ```
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Delete Tmux Session
+  type: http
+  seq: 10
+}
+
+delete {
+  url: {{baseUrl}}/api/terminals/tmux/sessions/mobile-project
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Delete Tmux Session
+  
+  Kill an entire tmux session (all windows).
+  
+  ## Path Parameters
+  - `sessionName` (string): Tmux session name
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "message": "Session mobile-project and all its windows have been killed"
+  }
+  ```
+}

@@ -1,0 +1,35 @@
+meta {
+  name: Get System Info
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/system/info
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get System Info
+  
+  Get information about the host system.
+  
+  ## Response
+  ```json
+  {
+    "hostname": "macbook-pro",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "memory": {
+      "total": 17179869184,
+      "free": 8589934592,
+      "used": 8589934592
+    },
+    "uptime": 123456,
+    "homeDir": "/Users/user",
+    "username": "user"
+  }
+  ```
+}

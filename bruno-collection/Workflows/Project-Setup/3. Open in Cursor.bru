@@ -1,0 +1,26 @@
+meta {
+  name: 3. Open in Cursor
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/projects/{{projectId}}/open
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Project Setup Workflow - Step 3: Open in Cursor
+  
+  Launch the Cursor IDE with the project.
+  
+  **Note:** Update `projectId` with the ID from Step 1 or Step 2.
+  
+  ## Workflow: Set Up New Project
+  1. List Projects - See existing projects
+  2. Create New Project - Create a fresh project
+  3. **Open in Cursor** (current) - Launch the IDE
+  4. Get Project Tree - Explore structure
+  5. Start AI Chat - Begin development with AI
+}

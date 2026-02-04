@@ -1,0 +1,36 @@
+meta {
+  name: Generate Commit Message
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/generate-commit-message
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Generate Commit Message
+  
+  Generate a commit message using cursor-agent based on staged changes.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Prerequisites
+  - cursor-agent CLI must be installed
+  - There must be staged changes
+  
+  ## Response
+  ```json
+  {
+    "message": "feat: add user authentication flow",
+    "stagedFiles": 3,
+    "truncated": false
+  }
+  ```
+}

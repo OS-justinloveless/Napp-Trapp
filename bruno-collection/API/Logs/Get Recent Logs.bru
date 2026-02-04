@@ -1,0 +1,45 @@
+meta {
+  name: Get Recent Logs
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/logs?limit=100&level=info
+  body: none
+  auth: inherit
+}
+
+params:query {
+  limit: 100
+  level: info
+}
+
+docs {
+  # Get Recent Logs
+  
+  Get recent logs from memory.
+  
+  ## Query Parameters
+  - `limit` (number): Number of logs to return (default: 100, max: 500)
+  - `level` (string): Minimum log level - debug, info, warn, error
+  - `category` (string): Filter by category (partial match)
+  - `since` (string): ISO timestamp to filter logs after
+  
+  ## Response
+  ```json
+  {
+    "logs": [
+      {
+        "timestamp": "2024-01-15T10:30:00.000Z",
+        "level": "info",
+        "category": "Server",
+        "message": "Server started",
+        "data": {}
+      }
+    ],
+    "count": 50,
+    "levels": ["debug", "info", "warn", "error"]
+  }
+  ```
+}

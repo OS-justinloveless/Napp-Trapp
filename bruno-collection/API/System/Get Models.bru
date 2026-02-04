@@ -1,0 +1,44 @@
+meta {
+  name: Get Models
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/system/models
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Models
+  
+  Get available AI models from cursor-agent.
+  
+  ## Response
+  ```json
+  {
+    "models": [
+      {
+        "id": "auto",
+        "name": "Auto",
+        "isDefault": false,
+        "isCurrent": false
+      },
+      {
+        "id": "sonnet-4.5",
+        "name": "Claude 4.5 Sonnet",
+        "isDefault": false,
+        "isCurrent": true
+      },
+      {
+        "id": "opus-4.5-thinking",
+        "name": "Claude 4.5 Opus (Thinking)",
+        "isDefault": true,
+        "isCurrent": false
+      }
+    ],
+    "cached": false
+  }
+  ```
+}

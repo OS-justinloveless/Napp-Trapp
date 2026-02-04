@@ -1,0 +1,36 @@
+meta {
+  name: Create File
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/files/create
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filePath": "{{projectPath}}/new-file.txt",
+    "content": "Initial content for new file"
+  }
+}
+
+docs {
+  # Create File
+  
+  Create a new file. Fails if file already exists.
+  
+  ## Request Body
+  - `filePath` (string, required): Absolute path for the new file
+  - `content` (string, optional): Initial file content (default: empty)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "path": "/path/to/new-file.txt"
+  }
+  ```
+}

@@ -1,0 +1,25 @@
+meta {
+  name: Clear Cache
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/suggestions/clear-cache
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Clear Suggestions Cache
+  
+  Clear the suggestions cache to force refresh.
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "message": "Cache cleared"
+  }
+  ```
+}

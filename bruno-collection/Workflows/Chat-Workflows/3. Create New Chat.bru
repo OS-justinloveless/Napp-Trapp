@@ -1,0 +1,46 @@
+meta {
+  name: 3. Create New Chat
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/conversations
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "projectPath": "{{projectPath}}",
+    "tool": "claude",
+    "topic": "code-review",
+    "mode": "agent",
+    "model": null,
+    "initialPrompt": null
+  }
+}
+
+docs {
+  # Chat Workflow - Step 3: Create New Chat
+  
+  Create a new chat window with the selected AI tool.
+  
+  ## Available Tools
+  - `claude` - Claude CLI (Anthropic)
+  - `cursor-agent` - Cursor Agent
+  - `aider` - Aider
+  - `gemini` - Gemini CLI
+  
+  ## Available Modes
+  - `agent` - Full autonomous mode (default)
+  - `plan` - Planning mode
+  - `ask` - Question/answer mode
+  
+  ## Workflow Steps
+  1. Check Tool Availability - See which tools are installed
+  2. List Existing Chats - See current chat sessions
+  3. **Create New Chat** (current) - Start a new AI chat
+  4. Send Initial Prompt - Give the AI a task
+  5. Monitor via Terminal - Watch progress via WebSocket
+}

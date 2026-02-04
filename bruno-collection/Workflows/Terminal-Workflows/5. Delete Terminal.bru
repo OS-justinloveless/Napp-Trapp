@@ -1,0 +1,26 @@
+meta {
+  name: 5. Delete Terminal
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/terminals/tmux-mobile-project:1
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Terminal Workflow - Step 5: Delete Terminal
+  
+  Close/kill the terminal when done.
+  
+  **Note:** Replace the terminal ID with the actual terminal ID.
+  
+  ## Workflow: Create and Use Terminal
+  1. Check Tmux Status - Verify tmux is available
+  2. List Existing Terminals - See current terminals
+  3. Create New Terminal - Start a new shell
+  4. Send Commands - Execute commands
+  5. **Cleanup** (current) - Close terminals when done
+}

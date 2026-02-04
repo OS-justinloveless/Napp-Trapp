@@ -1,0 +1,34 @@
+meta {
+  name: Open Cursor
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/system/open-cursor
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "path": "{{projectPath}}"
+  }
+}
+
+docs {
+  # Open Cursor
+  
+  Open Cursor IDE with a specific project path.
+  
+  ## Request Body
+  - `path` (string, required): Project path to open
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "message": "Opening /path/to/project in Cursor"
+  }
+  ```
+}

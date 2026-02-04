@@ -1,0 +1,31 @@
+meta {
+  name: List Projects
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/projects
+  body: none
+  auth: inherit
+}
+
+docs {
+  # List Projects
+  
+  Get list of recent Cursor projects.
+  
+  ## Response
+  ```json
+  {
+    "projects": [
+      {
+        "id": "base64-encoded-path",
+        "name": "my-project",
+        "path": "/Users/user/Code/my-project",
+        "lastOpened": "2024-01-15T10:30:00.000Z"
+      }
+    ]
+  }
+  ```
+}

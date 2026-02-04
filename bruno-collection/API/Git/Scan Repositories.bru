@@ -1,0 +1,43 @@
+meta {
+  name: Scan Repositories
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/scan-repos?maxDepth=5
+  body: none
+  auth: inherit
+}
+
+params:query {
+  maxDepth: 5
+}
+
+docs {
+  # Scan Repositories
+  
+  Scan project directory for git repositories (including sub-repos).
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `maxDepth` (number, optional): Maximum directory depth to scan (default: 5)
+  
+  ## Response
+  ```json
+  {
+    "repositories": [
+      {
+        "path": ".",
+        "name": "my-project"
+      },
+      {
+        "path": "packages/submodule",
+        "name": "submodule"
+      }
+    ]
+  }
+  ```
+}

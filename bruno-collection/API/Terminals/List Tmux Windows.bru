@@ -1,0 +1,42 @@
+meta {
+  name: List Tmux Windows
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/terminals/tmux/sessions/mobile-project/windows
+  body: none
+  auth: inherit
+}
+
+docs {
+  # List Tmux Windows
+  
+  List all windows in a tmux session.
+  
+  ## Path Parameters
+  - `sessionName` (string): Tmux session name
+  
+  ## Response
+  ```json
+  {
+    "sessionName": "mobile-project",
+    "windows": [
+      {
+        "index": 0,
+        "name": "shell",
+        "active": true,
+        "currentPath": "/path/to/project"
+      },
+      {
+        "index": 1,
+        "name": "chat-claude-debug",
+        "active": false,
+        "currentPath": "/path/to/project"
+      }
+    ],
+    "count": 2
+  }
+  ```
+}

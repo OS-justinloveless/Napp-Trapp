@@ -1,0 +1,44 @@
+meta {
+  name: Get Log
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/log?limit=10
+  body: none
+  auth: inherit
+}
+
+params:query {
+  limit: 10
+}
+
+docs {
+  # Get Log
+  
+  Get recent commit history.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `limit` (number, optional): Number of commits to return (default: 10)
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Response
+  ```json
+  {
+    "commits": [
+      {
+        "hash": "abc1234",
+        "shortHash": "abc1234",
+        "message": "feat: add new feature",
+        "author": "John Doe",
+        "email": "john@example.com",
+        "date": "2024-01-15T10:30:00.000Z"
+      }
+    ]
+  }
+  ```
+}

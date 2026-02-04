@@ -1,0 +1,52 @@
+meta {
+  name: Create Chat
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/conversations
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "projectPath": "{{projectPath}}",
+    "tool": "claude",
+    "topic": "debug-api",
+    "mode": "agent",
+    "model": null,
+    "initialPrompt": null
+  }
+}
+
+docs {
+  # Create Chat
+  
+  Create a new chat window running an AI CLI tool.
+  
+  ## Request Body
+  - `projectPath` (string): Absolute path to the project (or use projectId)
+  - `projectId` (string): Alternative: Base64-encoded project path
+  - `tool` (string): AI tool to use (claude, cursor-agent, gemini, aider)
+  - `topic` (string, optional): Topic name for the chat window
+  - `mode` (string, optional): Mode for the tool (agent, plan, ask) - default: agent
+  - `model` (string, optional): Specific model to use
+  - `initialPrompt` (string, optional): Initial prompt to send after tool starts
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "terminalId": "tmux-mobile-project:2",
+    "windowName": "chat-claude-debug-api",
+    "sessionName": "mobile-project",
+    "windowIndex": 2,
+    "tool": "claude",
+    "topic": "debug-api",
+    "mode": "agent",
+    "projectPath": "/path/to/project"
+  }
+  ```
+}

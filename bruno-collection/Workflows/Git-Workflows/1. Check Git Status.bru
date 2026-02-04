@@ -1,0 +1,25 @@
+meta {
+  name: 1. Check Git Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Git Workflow - Step 1: Check Status
+  
+  Start by checking the current git status to see what's changed.
+  
+  ## Workflow: Stage, Commit, Push
+  1. **Check Git Status** (current) - See changed files
+  2. View Diff - Review changes before staging
+  3. Stage Files - Add files to staging area
+  4. Generate Commit Message - Let AI write the message
+  5. Commit Changes - Create the commit
+  6. Push to Remote - Push to GitHub
+}

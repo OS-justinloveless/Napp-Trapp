@@ -1,0 +1,36 @@
+meta {
+  name: Get Remotes
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/remotes
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Get Remotes
+  
+  Get list of configured remote repositories.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Response
+  ```json
+  {
+    "remotes": [
+      {
+        "name": "origin",
+        "fetchUrl": "git@github.com:user/repo.git",
+        "pushUrl": "git@github.com:user/repo.git"
+      }
+    ]
+  }
+  ```
+}

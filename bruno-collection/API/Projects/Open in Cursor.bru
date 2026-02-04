@@ -1,0 +1,27 @@
+meta {
+  name: Open in Cursor
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/projects/{{projectId}}/open
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Open Project in Cursor
+  
+  Open a project in the Cursor IDE.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Response
+  ```json
+  {
+    "success": true
+  }
+  ```
+}

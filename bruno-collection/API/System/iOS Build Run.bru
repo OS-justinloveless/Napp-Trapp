@@ -1,0 +1,45 @@
+meta {
+  name: iOS Build Run
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/system/ios-build-run
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "configuration": "Debug",
+    "deviceName": "iPhone 16",
+    "deviceId": null,
+    "isPhysicalDevice": false,
+    "clean": false
+  }
+}
+
+docs {
+  # iOS Build and Run
+  
+  Build and run the iOS app via Xcode. macOS only.
+  
+  ## Request Body
+  - `configuration` (string): Build configuration - 'Debug' or 'Release' (default: 'Debug')
+  - `deviceName` (string): Device name (default: 'iPhone 16')
+  - `deviceId` (string, optional): Specific device UDID
+  - `isPhysicalDevice` (boolean): Whether to deploy to physical device (default: false)
+  - `clean` (boolean): Perform clean build (default: false)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "message": "App built and running on iPhone 16",
+    "configuration": "Debug",
+    "deviceName": "iPhone 16",
+    "isPhysicalDevice": false
+  }
+  ```
+}

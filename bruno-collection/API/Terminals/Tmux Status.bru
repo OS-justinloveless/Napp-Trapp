@@ -1,0 +1,34 @@
+meta {
+  name: Tmux Status
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/terminals/tmux/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  # Tmux Status
+  
+  Get tmux availability and session information.
+  
+  ## Response
+  ```json
+  {
+    "available": true,
+    "version": "3.4",
+    "sessionCount": 2,
+    "sessions": [
+      {
+        "name": "mobile-project",
+        "windowCount": 3,
+        "attached": false,
+        "projectName": "my-project"
+      }
+    ]
+  }
+  ```
+}

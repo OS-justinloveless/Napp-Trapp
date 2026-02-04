@@ -1,0 +1,40 @@
+meta {
+  name: Get Diff
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/api/git/{{projectId}}/diff?file=src/file.js&staged=false&maxLines=2000
+  body: none
+  auth: inherit
+}
+
+params:query {
+  file: src/file.js
+  staged: false
+  maxLines: 2000
+}
+
+docs {
+  # Get Diff
+  
+  Get diff for a specific file.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `file` (string, required): File path to diff
+  - `staged` (boolean, optional): Get staged diff (default: false)
+  - `maxLines` (number, optional): Maximum lines to return (default: 2000)
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Response
+  ```json
+  {
+    "diff": "--- a/src/file.js\n+++ b/src/file.js\n@@ -1,3 +1,4 @@\n...",
+    "truncated": false
+  }
+  ```
+}

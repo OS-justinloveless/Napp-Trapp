@@ -1,0 +1,27 @@
+meta {
+  name: 4. Verify Changes
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/files/read?filePath={{projectPath}}/README.md
+  body: none
+  auth: inherit
+}
+
+params:query {
+  filePath: {{projectPath}}/README.md
+}
+
+docs {
+  # File Operations Workflow - Step 4: Verify Changes
+  
+  Read the file again to verify the changes were applied.
+  
+  ## Workflow Steps
+  1. List Project Files - See what's in the project
+  2. Read a File - Open a specific file
+  3. Edit the File - Make modifications
+  4. **Verify Changes** (current) - Check the result
+}

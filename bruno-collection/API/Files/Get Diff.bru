@@ -1,0 +1,35 @@
+meta {
+  name: Get Diff
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/files/diff?filePath=test.txt&original=hello&modified=hello world
+  body: none
+  auth: inherit
+}
+
+params:query {
+  filePath: test.txt
+  original: hello
+  modified: hello world
+}
+
+docs {
+  # Get Diff
+  
+  Generate a unified diff between two versions of content.
+  
+  ## Query Parameters
+  - `filePath` (string, optional): File name for diff headers
+  - `original` (string, required): Original content
+  - `modified` (string, required): Modified content
+  
+  ## Response
+  ```json
+  {
+    "diff": "--- original\n+++ modified\n@@ -1 +1 @@\n-hello\n+hello world"
+  }
+  ```
+}

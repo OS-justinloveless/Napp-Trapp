@@ -1,0 +1,46 @@
+meta {
+  name: Create Project
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/projects
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "new-project",
+    "path": "~/Projects",
+    "template": null,
+    "createGitRepo": true
+  }
+}
+
+docs {
+  # Create Project
+  
+  Create a new project with optional Git repository initialization.
+  
+  ## Request Body
+  - `name` (string, required): Project name
+  - `path` (string, optional): Base path for the project (default: ~/Projects)
+  - `template` (string, optional): Template to use for initialization
+  - `createGitRepo` (boolean, optional): Initialize git and create GitHub repo
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "project": {
+      "name": "new-project",
+      "path": "/Users/user/Projects/new-project",
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "gitRepoUrl": "https://github.com/user/new-project",
+      "gitError": null
+    }
+  }
+  ```
+}

@@ -1,0 +1,37 @@
+meta {
+  name: Rename File
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/files/rename
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "oldPath": "{{projectPath}}/old-name.txt",
+    "newName": "new-name.txt"
+  }
+}
+
+docs {
+  # Rename File
+  
+  Rename a file or directory within the same parent directory.
+  
+  ## Request Body
+  - `oldPath` (string, required): Current absolute path
+  - `newName` (string, required): New name (not a path, just the name)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "oldPath": "/path/to/old-name.txt",
+    "newPath": "/path/to/new-name.txt"
+  }
+  ```
+}

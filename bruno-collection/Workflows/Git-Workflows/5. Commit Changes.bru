@@ -1,0 +1,40 @@
+meta {
+  name: 5. Commit Changes
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/commit
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "message": "feat: add Bruno collection for API debugging"
+  }
+}
+
+docs {
+  # Git Workflow - Step 5: Commit Changes
+  
+  Create a commit with the staged changes.
+  
+  **Tip:** Use the message generated in Step 4, or write your own.
+  
+  ## Commit Message Format
+  - `feat:` - New feature
+  - `fix:` - Bug fix
+  - `refactor:` - Code refactoring
+  - `docs:` - Documentation
+  - `chore:` - Maintenance tasks
+  
+  ## Workflow: Stage, Commit, Push
+  1. Check Git Status - See changed files
+  2. View Diff - Review changes before staging
+  3. Stage Files - Add files to staging area
+  4. Generate Commit Message - Let AI write the message
+  5. **Commit Changes** (current) - Create the commit
+  6. Push to Remote - Push to GitHub
+}

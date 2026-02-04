@@ -1,0 +1,39 @@
+meta {
+  name: Get Project Tree
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/projects/{{projectId}}/tree?depth=3
+  body: none
+  auth: inherit
+}
+
+params:query {
+  depth: 3
+}
+
+docs {
+  # Get Project Tree
+  
+  Get the file tree structure for a project.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `depth` (number, optional): Maximum directory depth to traverse (default: 3)
+  
+  ## Response
+  ```json
+  {
+    "tree": {
+      "name": "my-project",
+      "path": "/Users/user/Code/my-project",
+      "isDirectory": true,
+      "children": [...]
+    }
+  }
+  ```
+}

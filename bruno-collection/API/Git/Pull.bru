@@ -1,0 +1,44 @@
+meta {
+  name: Pull
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/git/{{projectId}}/pull
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "remote": "origin",
+    "branch": null
+  }
+}
+
+docs {
+  # Pull
+  
+  Pull changes from remote repository.
+  
+  ## Path Parameters
+  - `projectId` (string): Base64-encoded project path
+  
+  ## Query Parameters
+  - `repoPath` (string, optional): Relative path to sub-repository
+  
+  ## Request Body
+  - `remote` (string, optional): Remote name (default: origin)
+  - `branch` (string, optional): Branch to pull (default: current tracking branch)
+  
+  ## Response
+  ```json
+  {
+    "success": true,
+    "remote": "origin",
+    "branch": "main",
+    "commits": 3
+  }
+  ```
+}

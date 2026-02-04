@@ -1,0 +1,28 @@
+meta {
+  name: 2. List Existing Chats
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/conversations?projectPath={{projectPath}}
+  body: none
+  auth: inherit
+}
+
+params:query {
+  projectPath: {{projectPath}}
+}
+
+docs {
+  # Chat Workflow - Step 2: List Existing Chats
+  
+  Check if there are any existing chat sessions for this project.
+  
+  ## Workflow Steps
+  1. Check Tool Availability - See which tools are installed
+  2. **List Existing Chats** (current) - See current chat sessions
+  3. Create New Chat - Start a new AI chat
+  4. Send Initial Prompt - Give the AI a task
+  5. Monitor via Terminal - Watch progress via WebSocket
+}
