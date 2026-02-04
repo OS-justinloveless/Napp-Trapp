@@ -48,8 +48,8 @@ struct ProjectsView: View {
                 }
             }
             .sheet(isPresented: $showCreateSheet) {
-                CreateProjectSheet { name, template in
-                    await createProject(name: name, template: template)
+                CreateProjectSheet { name, path, template, createGitRepo in
+                    await createProject(name: name, path: path, template: template, createGitRepo: createGitRepo)
                 }
             }
             .navigationDestination(item: $selectedProject) { project in
@@ -125,11 +125,11 @@ struct ProjectsView: View {
         selectedProject = project
     }
     
-    private func createProject(name: String, template: String?) async {
+    private func createProject(name: String, path: String?, template: String?, createGitRepo: Bool) async {
         guard let api = authManager.createAPIService() else { return }
         
         do {
-            _ = try await api.createProject(name: name, template: template)
+            _ = try await api.createProject(name: name, path: path, template: template, createGitRepo: createGitRepo)
             await refreshProjects()
             showCreateSheet = false
         } catch {
@@ -201,10 +201,12 @@ struct ProjectRow: View {
 struct CreateProjectSheet: View {
     @Environment(\.dismiss) var dismiss
     @State private var name = ""
+    @State private var path = ""
     @State private var template = ""
+    @State private var createGitRepo = false
     @State private var isCreating = false
     
-    let onCreate: (String, String?) async -> Void
+    let onCreate: (String, String?, String?, Bool) async -> Void
     
     private let templates = [
         ("None", ""),
@@ -225,6 +227,17 @@ struct CreateProjectSheet: View {
                 }
                 
                 Section {
+                    TextField("~/Projects", text: $path)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .textContentType(.URL)
+                } header: {
+                    Text("Path (Optional)")
+                } footer: {
+                    Text("Leave empty to use ~/Projects")
+                }
+                
+                Section {
                     Picker("Template", selection: $template) {
                         ForEach(templates, id: \.1) { template in
                             Text(template.0).tag(template.1)
@@ -232,6 +245,12 @@ struct CreateProjectSheet: View {
                     }
                 } header: {
                     Text("Template (Optional)")
+                }
+                
+                Section {
+                    Toggle("Create GitHub Repository", isOn: $createGitRepo)
+                } footer: {
+                    Text("Initialize git and publish to GitHub using gh CLI")
                 }
             }
             .navigationTitle("New Project")
@@ -262,9 +281,10 @@ struct CreateProjectSheet: View {
     private func createProject() {
         isCreating = true
         Task {
-            await onCreate(name, template.isEmpty ? nil : template)
+            let projectPath = path.trimmingCharacters(in: .whitespaces).isEmpty ? nil : path
+            await onCreate(name, projectPath, template.isEmpty ? nil : template, createGitRepo)
             isCreating = false
-            dismiss()
+            // Note: Dismissal is handled by the parent view after onCreate completes
         }
     }
 }

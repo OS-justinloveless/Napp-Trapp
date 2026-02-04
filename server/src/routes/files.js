@@ -353,6 +353,37 @@ router.post('/move', async (req, res) => {
   }
 });
 
+// Create a new directory
+router.post('/mkdir', async (req, res) => {
+  try {
+    const { dirPath } = req.body;
+    
+    if (!dirPath) {
+      return res.status(400).json({ error: 'Directory path is required' });
+    }
+    
+    // Check if path already exists
+    try {
+      await fs.access(dirPath);
+      return res.status(409).json({ error: 'A file or directory already exists at this path' });
+    } catch (e) {
+      // Path doesn't exist, continue
+    }
+    
+    await fs.mkdir(dirPath, { recursive: true });
+    
+    console.log(`[files/mkdir] Created directory: ${dirPath}`);
+    
+    res.json({
+      success: true,
+      path: dirPath
+    });
+  } catch (error) {
+    console.error('Error creating directory:', error);
+    res.status(500).json({ error: 'Failed to create directory' });
+  }
+});
+
 // Upload files to a directory
 router.post('/upload', upload.array('files'), async (req, res) => {
   try {

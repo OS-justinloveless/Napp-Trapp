@@ -212,7 +212,7 @@ class WebSocketManager: ObservableObject {
                         id: terminalDict["id"] as? String ?? "",
                         name: terminalDict["name"] as? String ?? "Terminal",
                         cwd: terminalDict["cwd"] as? String ?? "",
-                        pid: terminalDict["pid"] as? Int ?? 0,
+                        pid: terminalDict["pid"] as? Int,
                         active: terminalDict["active"] as? Bool ?? true,
                         exitCode: terminalDict["exitCode"] as? Int,
                         source: terminalDict["source"] as? String ?? "mobile-pty",
@@ -225,7 +225,10 @@ class WebSocketManager: ObservableObject {
                         rows: terminalDict["rows"] as? Int ?? 24,
                         exitSignal: terminalDict["exitSignal"] as? String,
                         exitedAt: terminalDict["exitedAt"] as? Double,
-                        isHistory: false
+                        isHistory: false,
+                        attached: terminalDict["attached"] as? Bool,
+                        windowCount: terminalDict["windowCount"] as? Int,
+                        projectName: terminalDict["projectName"] as? String
                     )
                     print("WebSocket: Calling terminalCreatedHandler for \(terminal.id)")
                     terminalCreatedHandler?(terminal)
@@ -392,18 +395,22 @@ class WebSocketManager: ObservableObject {
     // MARK: - Terminal Methods
     
     /// Create a new PTY terminal
-    func createTerminal(cwd: String? = nil, cols: Int = 80, rows: Int = 24, onCreated: @escaping (Terminal) -> Void) {
+    func createTerminal(cwd: String? = nil, cols: Int = 80, rows: Int = 24, type: String = "pty", projectPath: String? = nil, onCreated: @escaping (Terminal) -> Void) {
         terminalCreatedHandler = onCreated
         var message: [String: Any] = [
             "type": "terminalCreate",
             "cols": cols,
-            "rows": rows
+            "rows": rows,
+            "terminalType": type  // "pty" or "tmux"
         ]
         if let cwd = cwd {
             message["cwd"] = cwd
         }
+        if let projectPath = projectPath {
+            message["projectPath"] = projectPath
+        }
         send(message)
-        print("WebSocket: Creating new terminal")
+        print("WebSocket: Creating new \(type) terminal")
     }
     
     /// Set handler for terminal closed events

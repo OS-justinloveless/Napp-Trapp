@@ -10,6 +10,7 @@ struct ProjectSelectionDrawer: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showSettings = false
+    @State private var showCreateProject = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +21,13 @@ struct ProjectSelectionDrawer: View {
                     .fontWeight(.bold)
                 
                 Spacer()
+                
+                Button {
+                    showCreateProject = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.body)
+                }
                 
                 Button {
                     loadProjects()
@@ -68,6 +76,13 @@ struct ProjectSelectionDrawer: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
+                    Button {
+                        showCreateProject = true
+                    } label: {
+                        Label("Create New Project", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 8)
                 }
                 .padding()
                 Spacer()
@@ -96,6 +111,25 @@ struct ProjectSelectionDrawer: View {
                         }
                     }
             }
+        }
+        .sheet(isPresented: $showCreateProject) {
+            CreateProjectSheet { name, path, template, createGitRepo in
+                await createProject(name: name, path: path, template: template, createGitRepo: createGitRepo)
+            }
+        }
+    }
+    
+    private func createProject(name: String, path: String?, template: String?, createGitRepo: Bool) async {
+        guard let api = authManager.createAPIService() else { return }
+        
+        do {
+            let response = try await api.createProject(name: name, path: path, template: template, createGitRepo: createGitRepo)
+            if response.success {
+                showCreateProject = false
+                await refreshProjects()
+            }
+        } catch {
+            self.error = error.localizedDescription
         }
     }
     

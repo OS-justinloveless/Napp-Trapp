@@ -79,13 +79,17 @@ router.get('/:projectId/tree', async (req, res) => {
 // Create a new project
 router.post('/', async (req, res) => {
   try {
-    const { name, path: projectPath, template } = req.body;
+    const { name, path: projectPath, template, createGitRepo } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Project name is required' });
     }
     
-    const basePath = projectPath || path.join(os.homedir(), 'Projects');
+    // Expand ~ to home directory if present
+    let basePath = projectPath || path.join(os.homedir(), 'Projects');
+    if (basePath.startsWith('~')) {
+      basePath = path.join(os.homedir(), basePath.slice(1));
+    }
     const fullPath = path.join(basePath, name);
     
     // Create project directory
@@ -103,12 +107,96 @@ router.post('/', async (req, res) => {
       `# ${name}\n\nCreated from Napp Trapp`
     );
     
+    // Create .gitignore
+    await fs.writeFile(
+      path.join(fullPath, '.gitignore'),
+      `# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+`
+    );
+    
+    let gitRepoUrl = null;
+    let gitError = null;
+    
+    // Initialize git and create GitHub repo if requested
+    if (createGitRepo) {
+      try {
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+        
+        // Initialize git repo
+        await execAsync('git init', { cwd: fullPath });
+        
+        // Add all files and create initial commit
+        await execAsync('git add .', { cwd: fullPath });
+        await execAsync('git commit -m "Initial commit from Napp Trapp"', { cwd: fullPath });
+        
+        // Create GitHub repo using gh CLI and push
+        try {
+          const { stdout } = await execAsync(`gh repo create ${name} --private --source=. --remote=origin --push`, { cwd: fullPath });
+          
+          // Extract repo URL from gh output or construct it
+          const repoMatch = stdout.match(/https:\/\/github\.com\/[^\s]+/);
+          if (repoMatch) {
+            gitRepoUrl = repoMatch[0];
+          } else {
+            // Try to get the remote URL
+            const { stdout: remoteUrl } = await execAsync('git remote get-url origin', { cwd: fullPath });
+            gitRepoUrl = remoteUrl.trim();
+          }
+        } catch (ghError) {
+          console.error('GitHub repo creation failed:', ghError.message);
+          gitError = `Git initialized but GitHub repo creation failed: ${ghError.message}`;
+        }
+      } catch (gitInitError) {
+        console.error('Git initialization failed:', gitInitError.message);
+        gitError = `Git initialization failed: ${gitInitError.message}`;
+      }
+    }
+    
+    const createdAt = new Date().toISOString();
+    
+    // Save to created projects list so it shows up in the projects drawer
+    await cursorWorkspace.saveCreatedProject({
+      name,
+      path: fullPath,
+      createdAt
+    });
+    
+    // Clear cache so the new project shows up immediately
+    cursorWorkspace.recentProjectsCache = null;
+    cursorWorkspace.cacheTimestamp = null;
+    
     res.json({ 
       success: true, 
       project: { 
         name, 
         path: fullPath,
-        createdAt: new Date().toISOString()
+        createdAt,
+        gitRepoUrl,
+        gitError
       } 
     });
   } catch (error) {

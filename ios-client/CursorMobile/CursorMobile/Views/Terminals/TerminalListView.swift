@@ -12,6 +12,7 @@ struct TerminalListView: View {
     @State private var selectedTerminal: Terminal?
     @State private var showInfoSheet = false
     @State private var isCreatingTerminal = false
+    @State private var showTerminalTypeSheet = false
     
     init(project: Project, isTerminalViewActive: Binding<Bool> = .constant(false)) {
         self.project = project
@@ -21,6 +22,10 @@ struct TerminalListView: View {
     // Separate terminals by source
     private var ptyTerminals: [Terminal] {
         terminals.filter { $0.source == "mobile-pty" }
+    }
+    
+    private var tmuxTerminals: [Terminal] {
+        terminals.filter { $0.source == "tmux" }
     }
     
     private var cursorTerminals: [Terminal] {
@@ -55,8 +60,18 @@ struct TerminalListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 12) {
-                    Button {
-                        createNewTerminal()
+                    Menu {
+                        Button {
+                            createNewTerminal(type: "pty")
+                        } label: {
+                            Label("New PTY Terminal", systemImage: "terminal")
+                        }
+                        
+                        Button {
+                            createNewTerminal(type: "tmux")
+                        } label: {
+                            Label("New tmux Session", systemImage: "rectangle.stack")
+                        }
                     } label: {
                         if isCreatingTerminal {
                             ProgressView()
@@ -105,19 +120,29 @@ struct TerminalListView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Create a new terminal or open one in Cursor IDE.")
+            Text("Create a new terminal or tmux session.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             
-            HStack(spacing: 16) {
+            VStack(spacing: 12) {
                 Button {
-                    createNewTerminal()
+                    createNewTerminal(type: "tmux")
                 } label: {
-                    Label("New Terminal", systemImage: "plus")
+                    Label("New tmux Session", systemImage: "rectangle.stack")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isCreatingTerminal)
+                
+                Button {
+                    createNewTerminal(type: "pty")
+                } label: {
+                    Label("New PTY Terminal", systemImage: "terminal")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
                 .disabled(isCreatingTerminal)
                 
                 Button("Refresh") {
@@ -125,12 +150,38 @@ struct TerminalListView: View {
                 }
                 .buttonStyle(.bordered)
             }
+            .frame(maxWidth: 250)
         }
         .padding()
     }
     
     private var terminalList: some View {
         List {
+            // Tmux Sessions - persistent terminals
+            if !tmuxTerminals.isEmpty {
+                Section {
+                    ForEach(tmuxTerminals) { terminal in
+                        Button {
+                            selectedTerminal = terminal
+                        } label: {
+                            TerminalRowView(terminal: terminal, showSource: true)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                killTerminal(terminal.id)
+                            } label: {
+                                Label("Kill", systemImage: "xmark.circle")
+                            }
+                        }
+                    }
+                } header: {
+                    Label("tmux Sessions", systemImage: "rectangle.stack")
+                } footer: {
+                    Text("Persistent sessions. Can be accessed from desktop via tmux.")
+                }
+            }
+            
             // PTY Terminals (Mobile) - with full input support
             if !ptyTerminals.isEmpty {
                 Section {
@@ -195,10 +246,10 @@ struct TerminalListView: View {
         isLoading = false
     }
     
-    private func createNewTerminal() {
+    private func createNewTerminal(type: String = "pty") {
         isCreatingTerminal = true
         
-        webSocketManager.createTerminal(cwd: project.path) { terminal in
+        webSocketManager.createTerminal(cwd: project.path, type: type, projectPath: project.path) { terminal in
             Task { @MainActor in
                 isCreatingTerminal = false
                 // Add to list and select
@@ -232,7 +283,7 @@ struct TerminalRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             // Terminal icon with status color
-            Image(systemName: terminal.active ? "terminal.fill" : "terminal")
+            Image(systemName: iconName)
                 .font(.title2)
                 .foregroundStyle(iconColor)
                 .frame(width: 32)
@@ -242,58 +293,125 @@ struct TerminalRowView: View {
                 HStack {
                     Text(terminal.name)
                         .font(.headline)
+                        .lineLimit(1)
                     
-                    if showSource && terminal.source == "mobile-pty" {
-                        Text("PTY")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.2))
-                            .foregroundColor(.blue)
-                            .cornerRadius(4)
+                    if showSource {
+                        sourceTag
                     }
                 }
                 
-                // Show active command with play indicator
-                if let activeCmd = terminal.activeCommand, !activeCmd.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "play.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                        Text(activeCmd)
-                            .font(.subheadline)
-                            .foregroundStyle(.green)
-                            .lineLimit(1)
-                    }
-                } else if !terminal.active, let exitCode = terminal.exitCode {
-                    // Show exit status for inactive terminals
-                    HStack(spacing: 4) {
-                        Image(systemName: exitCode == 0 ? "checkmark.circle" : "xmark.circle")
-                            .font(.caption2)
-                            .foregroundColor(exitCode == 0 ? .secondary : .red)
-                        Text("Exited (\(exitCode))")
-                            .font(.subheadline)
-                            .foregroundColor(exitCode == 0 ? .secondary : .red)
-                    }
-                } else if terminal.source == "mobile-pty" {
-                    Text("Ready for input")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                // Status text
+                statusLine
             }
             
             Spacer()
             
-            // Status indicator dot
-            Circle()
-                .fill(terminal.active ? Color.green : Color.gray)
-                .frame(width: 10, height: 10)
+            // Status indicator
+            statusIndicator
         }
         .padding(.vertical, 6)
     }
     
+    private var iconName: String {
+        if terminal.isTmux {
+            return "rectangle.stack.fill"
+        }
+        return terminal.active ? "terminal.fill" : "terminal"
+    }
+    
+    @ViewBuilder
+    private var sourceTag: some View {
+        switch terminal.sourceType {
+        case .tmux:
+            Text("TMUX")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.purple.opacity(0.2))
+                .foregroundColor(.purple)
+                .cornerRadius(4)
+        case .mobilePTY:
+            Text("PTY")
+                .font(.caption2)
+                .fontWeight(.medium)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.blue.opacity(0.2))
+                .foregroundColor(.blue)
+                .cornerRadius(4)
+        case .cursorIDE:
+            EmptyView()
+        }
+    }
+    
+    @ViewBuilder
+    private var statusLine: some View {
+        if terminal.isTmux {
+            // Tmux-specific status
+            HStack(spacing: 4) {
+                if terminal.attached == true {
+                    Image(systemName: "link")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                    Text("Attached")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
+                } else {
+                    Image(systemName: "moon.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                    Text("Persistent (detached)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else if let activeCmd = terminal.activeCommand, !activeCmd.isEmpty {
+            // Show active command with play indicator
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                Text(activeCmd)
+                    .font(.subheadline)
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+            }
+        } else if !terminal.active, let exitCode = terminal.exitCode {
+            // Show exit status for inactive terminals
+            HStack(spacing: 4) {
+                Image(systemName: exitCode == 0 ? "checkmark.circle" : "xmark.circle")
+                    .font(.caption2)
+                    .foregroundColor(exitCode == 0 ? .secondary : .red)
+                Text("Exited (\(exitCode))")
+                    .font(.subheadline)
+                    .foregroundColor(exitCode == 0 ? .secondary : .red)
+            }
+        } else if terminal.source == "mobile-pty" {
+            Text("Ready for input")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+    
+    @ViewBuilder
+    private var statusIndicator: some View {
+        if terminal.isTmux {
+            // Tmux sessions are always "alive" even when detached
+            Image(systemName: terminal.attached == true ? "circle.fill" : "circle")
+                .font(.caption)
+                .foregroundColor(terminal.attached == true ? .green : .orange)
+        } else {
+            Circle()
+                .fill(terminal.active ? Color.green : Color.gray)
+                .frame(width: 10, height: 10)
+        }
+    }
+    
     private var iconColor: Color {
+        if terminal.isTmux {
+            return .purple
+        }
         if terminal.source == "mobile-pty" {
             return terminal.active ? .blue : .secondary
         }
@@ -321,16 +439,24 @@ struct TerminalInfoSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top)
                     
-                    // Mobile PTY Terminals
+                    // Tmux Sessions (Recommended)
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Image(systemName: "iphone")
-                                .foregroundStyle(.blue)
-                            Text("Mobile Terminals")
+                            Image(systemName: "rectangle.stack.fill")
+                                .foregroundStyle(.purple)
+                            Text("tmux Sessions")
                                 .font(.headline)
+                            Text("RECOMMENDED")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.2))
+                                .foregroundColor(.purple)
+                                .cornerRadius(4)
                         }
                         
-                        Text("Full-featured terminals created from the app. These support complete bidirectional input/output.")
+                        Text("Persistent terminal sessions that survive disconnects. Can be accessed from both mobile and desktop.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         
@@ -341,9 +467,45 @@ struct TerminalInfoSheet: View {
                             Label("Output", systemImage: "checkmark.circle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.green)
-                            Label("Resize", systemImage: "checkmark.circle.fill")
+                            Label("Persistent", systemImage: "checkmark.circle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.green)
+                        }
+                        
+                        Text("Access from desktop: tmux attach -t <session-name>")
+                            .font(.caption)
+                            .fontDesign(.monospaced)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                    }
+                    .padding()
+                    .background(Color.purple.opacity(0.1))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    
+                    // Mobile PTY Terminals
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "iphone")
+                                .foregroundStyle(.blue)
+                            Text("Mobile PTY Terminals")
+                                .font(.headline)
+                        }
+                        
+                        Text("Full-featured terminals. End when the app disconnects or the server restarts.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        HStack(spacing: 8) {
+                            Label("Input", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Label("Output", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            Label("Persistent", systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
                         }
                     }
                     .padding()
@@ -360,7 +522,7 @@ struct TerminalInfoSheet: View {
                                 .font(.headline)
                         }
                         
-                        Text("Terminals from Cursor IDE. Due to macOS security restrictions, these are view-only from the mobile app.")
+                        Text("Terminals from Cursor IDE. View-only due to macOS security restrictions.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         
@@ -382,7 +544,7 @@ struct TerminalInfoSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Tip")
                             .font(.headline)
-                        Text("For full terminal functionality, tap the + button to create a new Mobile Terminal. These run on your Mac but are fully controllable from your phone.")
+                        Text("Use tmux sessions for long-running tasks. They persist even when you close the app, and you can reattach from your Mac's terminal anytime.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }

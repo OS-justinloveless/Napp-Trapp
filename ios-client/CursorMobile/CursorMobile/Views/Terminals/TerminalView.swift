@@ -143,7 +143,7 @@ struct TerminalView: View {
                 id: "cursor-1",
                 name: "zsh project",
                 cwd: "/Users/test/project",
-                pid: 12345,
+                pid: 12345,  // Optional, can be nil for tmux sessions
                 active: true,
                 exitCode: nil,
                 source: "cursor-ide",
@@ -156,7 +156,10 @@ struct TerminalView: View {
                 rows: 24,
                 exitSignal: nil,
                 exitedAt: nil,
-                isHistory: false
+                isHistory: false,
+                attached: nil,
+                windowCount: nil,
+                projectName: nil
             ),
             project: Project(
                 id: "1",

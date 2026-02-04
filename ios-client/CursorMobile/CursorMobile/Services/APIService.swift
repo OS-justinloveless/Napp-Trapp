@@ -329,8 +329,8 @@ class APIService {
         }
     }
     
-    func createProject(name: String, path: String? = nil, template: String? = nil) async throws -> CreateProjectResponse {
-        let body = try JSONEncoder().encode(CreateProjectRequest(name: name, path: path, template: template))
+    func createProject(name: String, path: String? = nil, template: String? = nil, createGitRepo: Bool = false) async throws -> CreateProjectResponse {
+        let body = try JSONEncoder().encode(CreateProjectRequest(name: name, path: path, template: template, createGitRepo: createGitRepo))
         let data = try await makeRequest(endpoint: "/api/projects", method: "POST", body: body)
         do {
             return try decoder.decode(CreateProjectResponse.self, from: data)
@@ -469,6 +469,16 @@ class APIService {
         let data = try await makeRequest(endpoint: "/api/files/create", method: "POST", body: body)
         do {
             return try decoder.decode(CreateFileResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
+    func createFolder(path: String) async throws -> CreateFolderResponse {
+        let body = try JSONEncoder().encode(CreateFolderRequest(dirPath: path))
+        let data = try await makeRequest(endpoint: "/api/files/mkdir", method: "POST", body: body)
+        do {
+            return try decoder.decode(CreateFolderResponse.self, from: data)
         } catch {
             throw APIError.decodingError(error)
         }

@@ -2,7 +2,7 @@ import chokidar from 'chokidar';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { terminalManager, ptyManager } from '../routes/terminals.js';
+import { terminalManager, ptyManager, tmuxManager } from '../routes/terminals.js';
 import { LogManager } from '../utils/LogManager.js';
 import { cliSessionManager } from '../utils/CLISessionManager.js';
 import { MobileChatStore } from '../utils/MobileChatStore.js';
@@ -11,6 +11,7 @@ import { CursorWorkspace } from '../utils/CursorWorkspace.js';
 const logger = LogManager.getInstance();
 const mobileChatStore = MobileChatStore.getInstance();
 const workspaceManager = new CursorWorkspace();
+const tmuxSubscribers = new Map(); // sessionName -> Set of clientIds
 
 const clients = new Map();
 const watchers = new Map();
@@ -230,6 +231,8 @@ export function setupWebSocket(wss, authManager) {
         }
       }
       
+      const client = clients.get(clientId);
+      
       // Clean up terminal subscriptions
       for (const terminalId of subscribedTerminals) {
         // PTY terminals
@@ -237,6 +240,35 @@ export function setupWebSocket(wss, authManager) {
           const subscribers = ptySubscribers.get(terminalId);
           if (subscribers) {
             subscribers.delete(clientId);
+          }
+          // Remove output handler
+          if (client && client.outputHandlers) {
+            const handler = client.outputHandlers.get(terminalId);
+            if (handler) {
+              ptyManager.removeOutputHandler(terminalId, handler);
+            }
+          }
+        }
+        
+        // Tmux terminals
+        if (tmuxManager.isTmuxTerminal(terminalId)) {
+          const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+          const subscribers = tmuxSubscribers.get(sessionName);
+          if (subscribers) {
+            subscribers.delete(clientId);
+            // If no more subscribers, detach (but keep session running)
+            if (subscribers.size === 0) {
+              tmuxManager.detachFromSession(sessionName);
+              tmuxSubscribers.delete(sessionName);
+              console.log(`Detached from tmux session ${sessionName} (client disconnected)`);
+            }
+          }
+          // Remove output handler
+          if (client && client.outputHandlers) {
+            const handler = client.outputHandlers.get(terminalId);
+            if (handler) {
+              tmuxManager.removeOutputHandler(sessionName, handler);
+            }
           }
         }
         
@@ -394,6 +426,10 @@ export function cleanup() {
   ptyManager.cleanup();
   ptySubscribers.clear();
   
+  // Clean up tmux attached sessions (but don't kill tmux sessions - they persist)
+  tmuxManager.cleanup();
+  tmuxSubscribers.clear();
+  
   // Clean up CLI sessions
   cliSessionManager.cleanup();
   chatSubscribers.clear();
@@ -406,14 +442,49 @@ export function cleanup() {
 // ============ Terminal Handlers ============
 
 /**
- * Create a new PTY terminal
+ * Create a new terminal (PTY or tmux)
  */
 function handleTerminalCreate(clientId, ws, message) {
-  const { cwd, shell, cols, rows } = message;
+  const { cwd, shell, cols, rows, terminalType = 'pty', projectPath } = message;
   
-  console.log(`[WS] Creating terminal for client ${clientId}:`, { cwd, shell, cols, rows });
+  console.log(`[WS] Creating ${terminalType} terminal for client ${clientId}:`, { cwd, shell, cols, rows, projectPath });
   
   try {
+    if (terminalType === 'tmux') {
+      // Create a tmux session
+      if (!projectPath) {
+        ws.send(JSON.stringify({
+          type: 'terminalError',
+          message: 'projectPath is required for tmux sessions'
+        }));
+        return;
+      }
+      
+      if (!tmuxManager.isTmuxAvailable()) {
+        ws.send(JSON.stringify({
+          type: 'terminalError',
+          message: 'tmux is not installed on this system. Install with: brew install tmux'
+        }));
+        return;
+      }
+      
+      const session = tmuxManager.createSession({
+        projectPath,
+        cwd: cwd || projectPath,
+        shell
+      });
+      
+      console.log(`[WS] Tmux session created:`, session);
+      
+      ws.send(JSON.stringify({
+        type: 'terminalCreated',
+        terminal: session
+      }));
+      
+      return;
+    }
+    
+    // Default: create a PTY terminal
     const terminal = ptyManager.spawnTerminal({
       cwd,
       shell,
@@ -441,7 +512,7 @@ function handleTerminalCreate(clientId, ws, message) {
 }
 
 /**
- * Attach to a terminal (PTY or Cursor IDE)
+ * Attach to a terminal (PTY, tmux, or Cursor IDE)
  */
 function handleTerminalAttach(clientId, ws, message) {
   const { terminalId, projectPath } = message;
@@ -460,6 +531,12 @@ function handleTerminalAttach(clientId, ws, message) {
     return;
   }
   
+  // Handle tmux terminals
+  if (tmuxManager.isTmuxTerminal(terminalId)) {
+    handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath);
+    return;
+  }
+  
   // Handle Cursor IDE terminals
   if (terminalManager.isCursorIDETerminal(terminalId)) {
     handleCursorTerminalAttach(clientId, ws, terminalId, projectPath);
@@ -469,7 +546,7 @@ function handleTerminalAttach(clientId, ws, message) {
   ws.send(JSON.stringify({
     type: 'terminalError',
     terminalId,
-    message: 'Invalid terminal ID format. Use pty-N for PTY terminals or cursor-N for Cursor IDE terminals.'
+    message: 'Invalid terminal ID format. Use pty-N for PTY, tmux-{sessionName} for tmux, or cursor-N for Cursor IDE terminals.'
   }));
 }
 
@@ -556,6 +633,118 @@ function handlePTYTerminalAttach(clientId, ws, terminalId) {
   }
   
   console.log(`Client ${clientId} attached to PTY terminal ${terminalId}`);
+}
+
+/**
+ * Attach to a tmux terminal
+ */
+function handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath) {
+  if (!projectPath) {
+    ws.send(JSON.stringify({
+      type: 'terminalError',
+      terminalId,
+      message: 'projectPath is required for tmux terminals'
+    }));
+    return;
+  }
+  
+  const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+  
+  // Check if session exists
+  const sessions = tmuxManager.listAllSessions();
+  const session = sessions.find(s => s.name === sessionName);
+  
+  if (!session) {
+    ws.send(JSON.stringify({
+      type: 'terminalError',
+      terminalId,
+      message: 'Tmux session not found'
+    }));
+    return;
+  }
+  
+  const client = clients.get(clientId);
+  if (!client) {
+    return;
+  }
+  
+  // Initialize outputHandlers map if needed
+  if (!client.outputHandlers) {
+    client.outputHandlers = new Map();
+  }
+  
+  // Check if already attached - remove old handler first
+  if (client.outputHandlers.has(terminalId)) {
+    console.log(`[WS] Client ${clientId} already attached to tmux ${sessionName}, removing old handler`);
+    const oldHandler = client.outputHandlers.get(terminalId);
+    tmuxManager.removeOutputHandler(sessionName, oldHandler);
+    client.outputHandlers.delete(terminalId);
+  }
+  
+  // Attach to the tmux session (spawns PTY with tmux attach)
+  try {
+    tmuxManager.attachToSession(sessionName, { cols: 80, rows: 24 });
+  } catch (error) {
+    ws.send(JSON.stringify({
+      type: 'terminalError',
+      terminalId,
+      message: `Failed to attach to tmux session: ${error.message}`
+    }));
+    return;
+  }
+  
+  // Set up subscribers tracking
+  if (!tmuxSubscribers.has(sessionName)) {
+    tmuxSubscribers.set(sessionName, new Set());
+  }
+  tmuxSubscribers.get(sessionName).add(clientId);
+  
+  // Track for client cleanup
+  client.subscribedTerminals.add(terminalId);
+  
+  // Set up output handler for this client
+  const outputHandler = (data) => {
+    const c = clients.get(clientId);
+    if (c && c.ws.readyState === 1) {
+      c.ws.send(JSON.stringify({
+        type: 'terminalData',
+        terminalId,
+        data
+      }));
+    }
+  };
+  
+  // Store handler reference for cleanup
+  client.outputHandlers.set(terminalId, outputHandler);
+  
+  tmuxManager.addOutputHandler(sessionName, outputHandler);
+  
+  // Get terminal info for response
+  const terminalInfo = tmuxManager.getTerminalInfo(sessionName, projectPath);
+  
+  // Send attachment confirmation
+  ws.send(JSON.stringify({
+    type: 'terminalAttached',
+    terminalId,
+    terminal: terminalInfo,
+    message: 'Attached to tmux session',
+    readOnly: false,
+    isTmux: true
+  }));
+  
+  // Send buffered output if available
+  const bufferedOutput = tmuxManager.getBuffer(sessionName);
+  if (bufferedOutput) {
+    const clearAndBuffer = '\x1b[2J\x1b[H' + bufferedOutput;
+    ws.send(JSON.stringify({
+      type: 'terminalData',
+      terminalId,
+      data: clearAndBuffer
+    }));
+    console.log(`[WS] Sent ${bufferedOutput.length} bytes of tmux buffer to client ${clientId}`);
+  }
+  
+  console.log(`Client ${clientId} attached to tmux session ${sessionName}`);
 }
 
 /**
@@ -718,6 +907,31 @@ function handleTerminalDetach(clientId, message) {
     }
   }
   
+  // Handle tmux terminal
+  if (tmuxManager.isTmuxTerminal(terminalId)) {
+    const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+    const subscribers = tmuxSubscribers.get(sessionName);
+    if (subscribers) {
+      subscribers.delete(clientId);
+      
+      // If no more subscribers, detach from tmux session (but keep session running)
+      if (subscribers.size === 0) {
+        tmuxManager.detachFromSession(sessionName);
+        tmuxSubscribers.delete(sessionName);
+        console.log(`Detached from tmux session ${sessionName} (no subscribers)`);
+      }
+    }
+    
+    // Remove output handler
+    if (client && client.outputHandlers) {
+      const handler = client.outputHandlers.get(terminalId);
+      if (handler) {
+        tmuxManager.removeOutputHandler(sessionName, handler);
+        client.outputHandlers.delete(terminalId);
+      }
+    }
+  }
+  
   // Handle Cursor IDE terminal
   const cursorWatcher = cursorTerminalWatchers.get(terminalId);
   if (cursorWatcher) {
@@ -763,12 +977,35 @@ function handleTerminalInput(clientId, ws, message) {
     return;
   }
   
+  // Handle tmux terminals - full bidirectional support
+  if (tmuxManager.isTmuxTerminal(terminalId)) {
+    try {
+      const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+      if (!tmuxManager.isAttached(sessionName)) {
+        ws.send(JSON.stringify({
+          type: 'terminalError',
+          terminalId,
+          message: 'Tmux session is not attached. Attach first.'
+        }));
+        return;
+      }
+      tmuxManager.writeToSession(sessionName, data);
+    } catch (error) {
+      ws.send(JSON.stringify({
+        type: 'terminalError',
+        terminalId,
+        message: error.message
+      }));
+    }
+    return;
+  }
+  
   // Handle Cursor IDE terminals - limited support
   if (terminalManager.isCursorIDETerminal(terminalId)) {
     ws.send(JSON.stringify({
       type: 'terminalError',
       terminalId,
-      message: 'Input to Cursor IDE terminals is not supported due to macOS security restrictions. Use PTY terminals for full input support.'
+      message: 'Input to Cursor IDE terminals is not supported due to macOS security restrictions. Use PTY or tmux terminals for full input support.'
     }));
     return;
   }
@@ -798,6 +1035,23 @@ function handleTerminalResize(clientId, ws, message) {
   if (ptyManager.isPTYTerminal(terminalId)) {
     try {
       ptyManager.resizeTerminal(terminalId, cols, rows);
+    } catch (error) {
+      ws.send(JSON.stringify({
+        type: 'terminalError',
+        terminalId,
+        message: error.message
+      }));
+    }
+    return;
+  }
+  
+  // Handle tmux terminals
+  if (tmuxManager.isTmuxTerminal(terminalId)) {
+    try {
+      const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+      if (tmuxManager.isAttached(sessionName)) {
+        tmuxManager.resizeSession(sessionName, cols, rows);
+      }
     } catch (error) {
       ws.send(JSON.stringify({
         type: 'terminalError',
@@ -844,6 +1098,42 @@ function handleTerminalKill(clientId, ws, message) {
       }
       
       ptyManager.killTerminal(terminalId);
+      
+      ws.send(JSON.stringify({
+        type: 'terminalKilled',
+        terminalId
+      }));
+    } catch (error) {
+      ws.send(JSON.stringify({
+        type: 'terminalError',
+        terminalId,
+        message: error.message
+      }));
+    }
+    return;
+  }
+  
+  // Handle tmux terminals
+  if (tmuxManager.isTmuxTerminal(terminalId)) {
+    try {
+      const sessionName = tmuxManager.getSessionNameFromId(terminalId);
+      
+      // Notify all subscribers that terminal is closing
+      const subscribers = tmuxSubscribers.get(sessionName);
+      if (subscribers) {
+        for (const cid of subscribers) {
+          const client = clients.get(cid);
+          if (client && client.ws.readyState === 1) {
+            client.ws.send(JSON.stringify({
+              type: 'terminalClosed',
+              terminalId
+            }));
+          }
+        }
+        tmuxSubscribers.delete(sessionName);
+      }
+      
+      tmuxManager.killSession(sessionName);
       
       ws.send(JSON.stringify({
         type: 'terminalKilled',

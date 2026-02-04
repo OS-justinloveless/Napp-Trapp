@@ -113,6 +113,63 @@ struct NewFileSheet: View {
     }
 }
 
+struct NewFolderSheet: View {
+    @Environment(\.dismiss) var dismiss
+    
+    let basePath: String
+    let onCreate: (String) async -> Void
+    
+    @State private var folderName = ""
+    @State private var isCreating = false
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    TextField("Folder Name", text: $folderName)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                } header: {
+                    Text("Folder Name")
+                } footer: {
+                    Text("Will be created in: \((basePath as NSString).lastPathComponent)")
+                }
+            }
+            .navigationTitle("New Folder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        createFolder()
+                    } label: {
+                        if isCreating {
+                            ProgressView()
+                        } else {
+                            Text("Create")
+                        }
+                    }
+                    .disabled(folderName.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
+                }
+            }
+        }
+    }
+    
+    private func createFolder() {
+        isCreating = true
+        Task {
+            await onCreate(folderName)
+            isCreating = false
+            dismiss()
+        }
+    }
+}
+
 struct RenameSheet: View {
     @Environment(\.dismiss) var dismiss
     

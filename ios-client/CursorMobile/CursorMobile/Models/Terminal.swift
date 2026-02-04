@@ -1,14 +1,36 @@
 import Foundation
 
-/// Represents a Cursor IDE terminal
+/// Terminal source types
+enum TerminalSource: String, Codable {
+    case cursorIDE = "cursor-ide"
+    case mobilePTY = "mobile-pty"
+    case tmux = "tmux"
+    
+    var displayName: String {
+        switch self {
+        case .cursorIDE: return "Cursor IDE"
+        case .mobilePTY: return "Mobile PTY"
+        case .tmux: return "tmux"
+        }
+    }
+    
+    var isInputSupported: Bool {
+        switch self {
+        case .cursorIDE: return false
+        case .mobilePTY, .tmux: return true
+        }
+    }
+}
+
+/// Represents a terminal session (Cursor IDE, PTY, or tmux)
 struct Terminal: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let cwd: String
-    let pid: Int
+    let pid: Int?  // Optional because tmux sessions may not have a pid when detached
     let active: Bool
     let exitCode: Int?
-    let source: String?  // Always "cursor-ide"
+    let source: String?  // "cursor-ide", "mobile-pty", or "tmux"
     let lastCommand: String?
     let activeCommand: String?
     
@@ -22,7 +44,35 @@ struct Terminal: Codable, Identifiable, Hashable {
     let exitedAt: Double?
     let isHistory: Bool?
     
+    // Tmux-specific fields
+    let attached: Bool?
+    let windowCount: Int?
+    let projectName: String?
+    
+    /// Parsed source type
+    var sourceType: TerminalSource {
+        guard let source = source else { return .cursorIDE }
+        return TerminalSource(rawValue: source) ?? .cursorIDE
+    }
+    
+    /// Whether this is a tmux session
+    var isTmux: Bool {
+        return sourceType == .tmux
+    }
+    
+    /// Whether input is supported for this terminal
+    var supportsInput: Bool {
+        return sourceType.isInputSupported
+    }
+    
     var statusText: String {
+        if isTmux {
+            if attached == true {
+                return "Attached"
+            }
+            return "Detached (persistent)"
+        }
+        
         if active {
             if let cmd = activeCommand, !cmd.isEmpty {
                 // Show just the command name, not the full command

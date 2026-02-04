@@ -13,6 +13,7 @@ struct ProjectFilesView: View {
     @State private var selectedFilePath: String?
     @State private var selectedItem: FileItem?
     @State private var showNewFileSheet = false
+    @State private var showNewFolderSheet = false
     @State private var showUploadSheet = false
     @State private var itemToRename: FileItem?
     @State private var itemToMove: FileItem?
@@ -45,6 +46,12 @@ struct ProjectFilesView: View {
                         showNewFileSheet = true
                     } label: {
                         Label("New File", systemImage: "doc.badge.plus")
+                    }
+                    
+                    Button {
+                        showNewFolderSheet = true
+                    } label: {
+                        Label("New Folder", systemImage: "folder.badge.plus")
                     }
                     
                     Button {
@@ -92,6 +99,11 @@ struct ProjectFilesView: View {
         .sheet(isPresented: $showNewFileSheet) {
             NewFileSheet(basePath: currentPath) { fileName, content in
                 await createFile(name: fileName, content: content)
+            }
+        }
+        .sheet(isPresented: $showNewFolderSheet) {
+            NewFolderSheet(basePath: currentPath) { folderName in
+                await createFolder(name: folderName)
             }
         }
         .sheet(isPresented: $showUploadSheet) {
@@ -297,6 +309,20 @@ struct ProjectFilesView: View {
             _ = try await api.createFile(path: filePath, content: content)
             await refreshDirectory()
             showNewFileSheet = false
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    private func createFolder(name: String) async {
+        guard let api = authManager.createAPIService() else { return }
+        
+        let folderPath = (currentPath as NSString).appendingPathComponent(name)
+        
+        do {
+            _ = try await api.createFolder(path: folderPath)
+            await refreshDirectory()
+            showNewFolderSheet = false
         } catch {
             self.error = error.localizedDescription
         }

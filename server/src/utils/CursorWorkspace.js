@@ -11,6 +11,36 @@ export class CursorWorkspace {
     this.recentProjectsCache = null;
     this.cacheTimestamp = null;
     this.cacheDuration = 30000; // 30 seconds
+    this.dataDir = path.join(process.cwd(), '.napp-trapp-data');
+    this.createdProjectsFile = path.join(this.dataDir, 'created-projects.json');
+  }
+
+  async getCreatedProjects() {
+    try {
+      const content = await fs.readFile(this.createdProjectsFile, 'utf-8');
+      return JSON.parse(content);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async saveCreatedProject(project) {
+    const projects = await this.getCreatedProjects();
+    
+    // Avoid duplicates
+    if (!projects.find(p => p.path === project.path)) {
+      projects.push({
+        id: Buffer.from(project.path).toString('base64'),
+        name: project.name,
+        path: project.path,
+        lastOpened: project.createdAt || new Date().toISOString(),
+        createdFromMobile: true
+      });
+      
+      // Ensure directory exists
+      await fs.mkdir(this.dataDir, { recursive: true });
+      await fs.writeFile(this.createdProjectsFile, JSON.stringify(projects, null, 2));
+    }
   }
 
   getCursorConfigPath() {
@@ -117,6 +147,21 @@ export class CursorWorkspace {
       }
     } catch (e) {
       // Workspace storage not found
+    }
+    
+    // Merge with projects created from mobile
+    const createdProjects = await this.getCreatedProjects();
+    for (const created of createdProjects) {
+      // Check if project still exists
+      try {
+        await fs.access(created.path);
+        // Avoid duplicates
+        if (!projects.find(p => p.path === created.path)) {
+          projects.push(created);
+        }
+      } catch (e) {
+        // Project no longer exists, skip it
+      }
     }
     
     // Sort by last opened

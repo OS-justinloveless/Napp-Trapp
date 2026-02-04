@@ -205,6 +205,15 @@ struct CreateFileResponse: Codable {
     let path: String
 }
 
+struct CreateFolderRequest: Codable {
+    let dirPath: String
+}
+
+struct CreateFolderResponse: Codable {
+    let success: Bool
+    let path: String
+}
+
 struct DeleteFileResponse: Codable {
     let success: Bool
     let deleted: String

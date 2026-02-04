@@ -76,6 +76,7 @@ struct CreateProjectRequest: Codable {
     let name: String
     let path: String?
     let template: String?
+    let createGitRepo: Bool?
 }
 
 struct CreateProjectResponse: Codable {
