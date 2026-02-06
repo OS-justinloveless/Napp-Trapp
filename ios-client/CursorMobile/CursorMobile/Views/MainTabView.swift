@@ -314,6 +314,8 @@ struct MainTabView: View {
                     Text(project.name)
                         .font(.subheadline)
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 180, alignment: .leading)
                 }
             }
         }
@@ -557,6 +559,8 @@ private struct MainTabViewWithProject: View {
                     Text(project.name)
                         .font(.subheadline)
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 180, alignment: .leading)
                 }
             }
         }
