@@ -10,8 +10,8 @@ struct ProjectDetailView: View {
     
     enum ProjectSection: String, CaseIterable {
         case files = "Files"
+        case git = "Git"
         case terminals = "Terminals"
-        case chat = "Chat"
     }
     
     var body: some View {
@@ -29,10 +29,10 @@ struct ProjectDetailView: View {
             switch selectedSection {
             case .files:
                 ProjectFilesView(project: project)
+            case .git:
+                GitView(project: project)
             case .terminals:
                 TerminalListView(project: project)
-            case .chat:
-                ProjectConversationsView(project: project)
             }
         }
         .navigationTitle(project.name)

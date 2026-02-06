@@ -11,13 +11,6 @@ struct MainTabView: View {
     // Track when terminal view is active (to hide tab bar)
     @State private var isTerminalViewActive = false
     
-    // New chat state (now opens terminal for tmux chat windows)
-    @State private var isCreatingChat = false
-    @State private var showNewChatSheet = false
-    @State private var navigateToTerminal = false
-    @State private var terminalNavigationId: String?
-    @State private var terminalNavigationProjectPath: String?
-    
     // Track if we've attempted to restore the last project
     @State private var hasAttemptedProjectRestore = false
     
@@ -116,7 +109,7 @@ struct MainTabView: View {
         }
         .onChange(of: selectedTab) { _, newTab in
             // Reset terminal view active state when switching away from terminals tab
-            if newTab != 1 {
+            if newTab != 2 {
                 isTerminalViewActive = false
             }
         }
@@ -141,38 +134,22 @@ struct MainTabView: View {
                 case 0:
                     filesTab(project: project)
                 case 1:
-                    terminalsTab(project: project)
-                case 2:
                     gitTab(project: project)
-                case 3:
-                    chatTab(project: project)
+                case 2:
+                    terminalsTab(project: project)
                 default:
                     filesTab(project: project)
                 }
             }
             
-            // Floating tab bar and FAB overlay - hide when in terminal view
+            // Floating tab bar - hide when in terminal view
             if !isTerminalViewActive {
-                HStack(alignment: .center, spacing: 12) {
-                    FloatingTabBar(selectedTab: $selectedTab)
-                    FloatingActionButton {
-                        showNewChatSheet = true
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+                FloatingTabBar(selectedTab: $selectedTab)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
             }
         }
         .ignoresSafeArea(edges: .bottom)
-        .sheet(isPresented: $showNewChatSheet) {
-            NewChatSheet(project: project) { terminalId, projectPath in
-                // Navigate to terminal view for the new chat window
-                terminalNavigationId = terminalId
-                terminalNavigationProjectPath = projectPath
-                selectedTab = 1  // Switch to terminals tab
-                navigateToTerminal = true
-            }
-        }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
@@ -204,29 +181,6 @@ struct MainTabView: View {
         }
     }
     
-    private func terminalsTab(project: Project) -> some View {
-        NavigationStack {
-            TerminalListView(project: project, isTerminalViewActive: $isTerminalViewActive)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        drawerToggleButton
-                    }
-                }
-                .safeAreaInset(edge: .bottom) {
-                    // Only add bottom spacing when tab bar is visible
-                    if !isTerminalViewActive {
-                        Color.clear.frame(height: 80)
-                    }
-                }
-                .navigationDestination(isPresented: $navigateToTerminal) {
-                    if let terminalId = terminalNavigationId,
-                       let projectPath = terminalNavigationProjectPath {
-                        TerminalView(terminalId: terminalId, projectPath: projectPath)
-                    }
-                }
-        }
-    }
-    
     private func gitTab(project: Project) -> some View {
         NavigationStack {
             GitView(project: project)
@@ -241,16 +195,19 @@ struct MainTabView: View {
         }
     }
     
-    private func chatTab(project: Project) -> some View {
+    private func terminalsTab(project: Project) -> some View {
         NavigationStack {
-            ProjectConversationsView(project: project)
+            TerminalListView(project: project, isTerminalViewActive: $isTerminalViewActive)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
                     }
                 }
                 .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: 80)
+                    // Only add bottom spacing when tab bar is visible
+                    if !isTerminalViewActive {
+                        Color.clear.frame(height: 80)
+                    }
                 }
         }
     }
@@ -470,22 +427,17 @@ private struct MainTabViewWithProject: View {
                 case 0:
                     filesTab(project: project)
                 case 1:
-                    terminalsTab(project: project)
-                case 2:
                     gitTab(project: project)
-                case 3:
-                    chatTab(project: project)
+                case 2:
+                    terminalsTab(project: project)
                 default:
                     filesTab(project: project)
                 }
             }
             
-            HStack(alignment: .center, spacing: 12) {
-                FloatingTabBar(selectedTab: $selectedTab)
-                FloatingActionButton { }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 16)
+            FloatingTabBar(selectedTab: $selectedTab)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
         }
         .ignoresSafeArea(edges: .bottom)
     }
@@ -494,20 +446,6 @@ private struct MainTabViewWithProject: View {
         NavigationStack {
             // Preview with dummy file data
             PreviewFilesView(project: project)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        drawerToggleButton
-                    }
-                }
-                .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: 80)
-                }
-        }
-    }
-    
-    private func terminalsTab(project: Project) -> some View {
-        NavigationStack {
-            TerminalListView(project: project)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
@@ -533,9 +471,9 @@ private struct MainTabViewWithProject: View {
         }
     }
     
-    private func chatTab(project: Project) -> some View {
+    private func terminalsTab(project: Project) -> some View {
         NavigationStack {
-            ProjectConversationsView(project: project)
+            TerminalListView(project: project)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         drawerToggleButton
