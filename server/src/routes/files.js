@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { createTwoFilesPatch } from 'diff';
 import multer from 'multer';
 import mime from 'mime-types';
@@ -164,30 +165,55 @@ router.get('/diff', async (req, res) => {
 // List directory contents
 router.get('/list', async (req, res) => {
   try {
-    const { dirPath } = req.query;
+    let { dirPath } = req.query;
     
     if (!dirPath) {
       return res.status(400).json({ error: 'Directory path is required' });
     }
     
+    // Expand ~ to home directory
+    if (dirPath === '~' || dirPath.startsWith('~/')) {
+      dirPath = path.join(os.homedir(), dirPath.slice(1));
+    }
+    
+    // Resolve to absolute path
+    dirPath = path.resolve(dirPath);
+    
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     
-    const items = await Promise.all(
-      entries
-        .filter(entry => !entry.name.startsWith('.'))
-        .map(async entry => {
-          const fullPath = path.join(dirPath, entry.name);
-          const stats = await fs.stat(fullPath);
-          
-          return {
+    // Process entries individually so one failure doesn't break the whole listing
+    const items = [];
+    for (const entry of entries) {
+      // Skip hidden files/directories
+      if (entry.name.startsWith('.')) continue;
+      
+      const fullPath = path.join(dirPath, entry.name);
+      try {
+        const stats = await fs.stat(fullPath);
+        items.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory(),
+          size: stats.size,
+          modified: stats.mtime.toISOString()
+        });
+      } catch (statError) {
+        // Skip entries we can't stat (permission denied, broken symlinks, etc.)
+        // but still include them with minimal info if we can determine the type
+        try {
+          const lstat = await fs.lstat(fullPath);
+          items.push({
             name: entry.name,
             path: fullPath,
             isDirectory: entry.isDirectory(),
-            size: stats.size,
-            modified: stats.mtime.toISOString()
-          };
-        })
-    );
+            size: lstat.size || 0,
+            modified: lstat.mtime ? lstat.mtime.toISOString() : new Date().toISOString()
+          });
+        } catch {
+          // Completely inaccessible entry, skip it
+        }
+      }
+    }
     
     // Sort: directories first, then files
     items.sort((a, b) => {
@@ -196,10 +222,16 @@ router.get('/list', async (req, res) => {
       return a.name.localeCompare(b.name);
     });
     
-    res.json({ items });
+    res.json({ items, resolvedPath: dirPath });
   } catch (error) {
     if (error.code === 'ENOENT') {
       return res.status(404).json({ error: 'Directory not found' });
+    }
+    if (error.code === 'EACCES') {
+      return res.status(403).json({ error: 'Permission denied' });
+    }
+    if (error.code === 'ENOTDIR') {
+      return res.status(400).json({ error: 'Path is not a directory' });
     }
     console.error('Error listing directory:', error);
     res.status(500).json({ error: 'Failed to list directory' });

@@ -11,6 +11,7 @@ struct ProjectSelectionDrawer: View {
     @State private var error: String?
     @State private var showSettings = false
     @State private var showCreateProject = false
+    @State private var showFolderBrowser = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,13 @@ struct ProjectSelectionDrawer: View {
                     .fontWeight(.bold)
                 
                 Spacer()
+                
+                Button {
+                    showFolderBrowser = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.body)
+                }
                 
                 Button {
                     showCreateProject = true
@@ -76,12 +84,21 @@ struct ProjectSelectionDrawer: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    Button {
-                        showCreateProject = true
-                    } label: {
-                        Label("Create New Project", systemImage: "plus")
+                    HStack(spacing: 12) {
+                        Button {
+                            showFolderBrowser = true
+                        } label: {
+                            Label("Open Folder", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button {
+                            showCreateProject = true
+                        } label: {
+                            Label("New Project", systemImage: "plus")
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                     .padding(.top, 8)
                 }
                 .padding()
@@ -116,6 +133,26 @@ struct ProjectSelectionDrawer: View {
             CreateProjectSheet { name, path, template, createGitRepo in
                 await createProject(name: name, path: path, template: template, createGitRepo: createGitRepo)
             }
+        }
+        .sheet(isPresented: $showFolderBrowser) {
+            FolderBrowserSheet { folderPath in
+                await openFolder(path: folderPath)
+            }
+        }
+    }
+    
+    private func openFolder(path folderPath: String) async {
+        guard let api = authManager.createAPIService() else { return }
+        
+        do {
+            let response = try await api.openFolder(path: folderPath)
+            if response.success, let project = response.project {
+                showFolderBrowser = false
+                await refreshProjects()
+                selectProject(project)
+            }
+        } catch {
+            self.error = error.localizedDescription
         }
     }
     

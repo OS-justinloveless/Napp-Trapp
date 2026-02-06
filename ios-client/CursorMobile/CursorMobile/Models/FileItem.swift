@@ -82,6 +82,7 @@ struct FileItem: Codable, Identifiable, Hashable {
 
 struct DirectoryListResponse: Codable {
     let items: [FileItem]
+    let resolvedPath: String?
 }
 
 struct FileContent: Codable {

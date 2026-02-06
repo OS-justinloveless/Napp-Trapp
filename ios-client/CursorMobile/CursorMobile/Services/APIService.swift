@@ -343,6 +343,17 @@ class APIService {
         _ = try await makeRequest(endpoint: "/api/projects/\(id)/open", method: "POST")
     }
     
+    /// Register an arbitrary folder path as a project
+    func openFolder(path folderPath: String) async throws -> OpenFolderResponse {
+        let body = try JSONEncoder().encode(OpenFolderRequest(folderPath: folderPath))
+        let data = try await makeRequest(endpoint: "/api/projects/open-folder", method: "POST", body: body)
+        do {
+            return try decoder.decode(OpenFolderResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+    
     func getProjectConversations(projectId: String) async throws -> [Conversation] {
         let data = try await makeRequest(endpoint: "/api/projects/\(projectId)/conversations")
         
@@ -434,11 +445,15 @@ class APIService {
     // MARK: - Files
     
     func listDirectory(path: String) async throws -> [FileItem] {
+        let response = try await listDirectoryFull(path: path)
+        return response.items
+    }
+    
+    func listDirectoryFull(path: String) async throws -> DirectoryListResponse {
         let queryItems = [URLQueryItem(name: "dirPath", value: path)]
         let data = try await makeRequest(endpoint: "/api/files/list", queryItems: queryItems)
         do {
-            let response = try decoder.decode(DirectoryListResponse.self, from: data)
-            return response.items
+            return try decoder.decode(DirectoryListResponse.self, from: data)
         } catch {
             throw APIError.decodingError(error)
         }

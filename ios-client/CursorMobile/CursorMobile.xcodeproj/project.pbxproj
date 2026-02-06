@@ -53,6 +53,7 @@
 		F000000000000021 /* ProjectFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000022 /* ProjectFilesView.swift */; };
 		F000000000000022 /* ProjectConversationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000023 /* ProjectConversationsView.swift */; };
 		F000000000000024 /* ProjectSelectionDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000024 /* ProjectSelectionDrawer.swift */; };
+		D000000000000003 /* FolderBrowserSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000003 /* FolderBrowserSheet.swift */; };
 		F000000000000025 /* GitInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000025 /* GitInfo.swift */; };
 		F000000000000026 /* GitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000026 /* GitView.swift */; };
 		F000000000000027 /* GitCommitSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000027 /* GitCommitSheet.swift */; };
@@ -128,6 +129,7 @@
 		F100000000000022 /* ProjectFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFilesView.swift; sourceTree = "<group>"; };
 		F100000000000023 /* ProjectConversationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConversationsView.swift; sourceTree = "<group>"; };
 		F100000000000024 /* ProjectSelectionDrawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSelectionDrawer.swift; sourceTree = "<group>"; };
+		D100000000000003 /* FolderBrowserSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderBrowserSheet.swift; sourceTree = "<group>"; };
 		F100000000000025 /* GitInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitInfo.swift; sourceTree = "<group>"; };
 		F100000000000026 /* GitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitView.swift; sourceTree = "<group>"; };
 		F100000000000027 /* GitCommitSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitCommitSheet.swift; sourceTree = "<group>"; };
@@ -294,6 +296,7 @@
 				F100000000000022 /* ProjectFilesView.swift */,
 				F100000000000023 /* ProjectConversationsView.swift */,
 				F100000000000024 /* ProjectSelectionDrawer.swift */,
+				D100000000000003 /* FolderBrowserSheet.swift */,
 			);
 			path = Projects;
 			sourceTree = "<group>";
@@ -492,6 +495,7 @@
 				F000000000000021 /* ProjectFilesView.swift in Sources */,
 				F000000000000022 /* ProjectConversationsView.swift in Sources */,
 				F000000000000024 /* ProjectSelectionDrawer.swift in Sources */,
+				D000000000000003 /* FolderBrowserSheet.swift in Sources */,
 				96E84BCE2F272E6F00B612F2 /* Terminal.swift in Sources */,
 				F000000000000025 /* GitInfo.swift in Sources */,
 				F000000000000026 /* GitView.swift in Sources */,

@@ -89,3 +89,12 @@ struct CreateProjectResponse: Codable {
         let createdAt: String
     }
 }
+
+struct OpenFolderRequest: Codable {
+    let folderPath: String
+}
+
+struct OpenFolderResponse: Codable {
+    let success: Bool
+    let project: Project?
+}

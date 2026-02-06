@@ -176,6 +176,60 @@ Thumbs.db
   }
 });
 
+// Open an arbitrary folder as a project (register it so it shows up in the project list)
+router.post('/open-folder', async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+    
+    if (!folderPath) {
+      return res.status(400).json({ error: 'folderPath is required' });
+    }
+    
+    // Expand ~ to home directory if present
+    let resolvedPath = folderPath;
+    if (resolvedPath.startsWith('~')) {
+      resolvedPath = path.join(os.homedir(), resolvedPath.slice(1));
+    }
+    resolvedPath = path.resolve(resolvedPath);
+    
+    // Verify the path exists and is a directory
+    try {
+      const stats = await fs.stat(resolvedPath);
+      if (!stats.isDirectory()) {
+        return res.status(400).json({ error: 'Path is not a directory' });
+      }
+    } catch (e) {
+      return res.status(404).json({ error: 'Directory does not exist' });
+    }
+    
+    const projectName = path.basename(resolvedPath);
+    const projectId = Buffer.from(resolvedPath).toString('base64');
+    
+    // Save it so it shows up in the project list
+    await cursorWorkspace.saveCreatedProject({
+      name: projectName,
+      path: resolvedPath,
+      createdAt: new Date().toISOString()
+    });
+    
+    // Clear cache so the project shows up immediately
+    cursorWorkspace.recentProjectsCache = null;
+    cursorWorkspace.cacheTimestamp = null;
+    
+    const project = {
+      id: projectId,
+      name: projectName,
+      path: resolvedPath,
+      lastOpened: new Date().toISOString()
+    };
+    
+    res.json({ success: true, project });
+  } catch (error) {
+    console.error('Error opening folder as project:', error);
+    res.status(500).json({ error: 'Failed to open folder as project' });
+  }
+});
+
 // Open project in Cursor
 router.post('/:projectId/open', async (req, res) => {
   try {
