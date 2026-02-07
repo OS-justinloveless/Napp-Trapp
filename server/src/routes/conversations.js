@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import { tmuxManager } from '../utils/TmuxManager.js';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
 import { getSupportedTools, checkAllToolsAvailability } from '../utils/CLIAdapter.js';
 import { logger } from '../utils/LogManager.js';
 
 const router = Router();
-const workspaceManager = new CursorWorkspace();
+const projectManager = new ProjectManager();
 
 /**
  * Conversations API - Tmux Chat Windows
  * 
- * Chats are now tmux windows running AI CLI tools directly.
+ * Chats are tmux windows running AI CLI tools directly.
  * This provides a simple, consistent experience:
  * - Create a chat = create a tmux window running claude/cursor-agent/gemini
  * - View a chat = attach to the tmux window via terminal view
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
     // Get project path from projectId if not provided directly
     let resolvedProjectPath = projectPath;
     if (!resolvedProjectPath && projectId && projectId !== 'global') {
-      const project = await workspaceManager.getProjectDetails(projectId);
+      const project = await projectManager.getProjectDetails(projectId);
       if (project) {
         resolvedProjectPath = project.path;
       }
@@ -58,10 +58,9 @@ router.get('/', async (req, res) => {
       type: 'chat',
       source: 'tmux',
       active: w.active,
-      // For backwards compatibility with existing iOS code
       title: `${w.tool}: ${w.topic}`,
-      timestamp: Date.now(), // We don't track creation time in tmux
-      messageCount: 0 // Not applicable for tmux chats
+      timestamp: Date.now(),
+      messageCount: 0
     }));
 
     res.json({
@@ -186,7 +185,7 @@ router.post('/', async (req, res) => {
     let projectName = null;
     
     if (!resolvedProjectPath && projectId && projectId !== 'global') {
-      const project = await workspaceManager.getProjectDetails(projectId);
+      const project = await projectManager.getProjectDetails(projectId);
       if (project) {
         resolvedProjectPath = project.path;
         projectName = project.name;
@@ -260,7 +259,6 @@ router.post('/', async (req, res) => {
       mode: chatWindow.mode,
       projectPath: resolvedProjectPath,
       projectName,
-      // For backwards compatibility
       chatId: chatWindow.id
     });
   } catch (error) {

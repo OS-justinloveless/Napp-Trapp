@@ -2,11 +2,12 @@ import express from 'express';
 import path from 'path';
 import { spawn, execSync } from 'child_process';
 import { GitManager } from '../utils/GitManager.js';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
+import { getSupportedTools, getCLIAdapter } from '../utils/CLIAdapter.js';
 
 export const gitRoutes = express.Router();
 const gitManager = new GitManager();
-const workspace = new CursorWorkspace();
+const workspace = new ProjectManager();
 
 /**
  * Helper to get project path from project ID
@@ -500,7 +501,7 @@ gitRoutes.post('/:projectId/generate-commit-message', async (req, res) => {
       truncated = true;
     }
     
-    // Build the prompt for cursor-agent
+    // Build the prompt
     const prompt = `Generate a concise git commit message for the following staged changes. 
 
 The message should:
@@ -518,31 +519,56 @@ ${diffForPrompt}
 
 Respond with ONLY the commit message, nothing else. No quotes, no explanation, just the message.`;
 
-    console.log('[git.js] Calling cursor-agent to generate commit message...');
+    console.log('[git.js] Looking for available AI CLI tool to generate commit message...');
     
-    // Check if cursor-agent exists
-    try {
-      execSync('which cursor-agent', { stdio: 'pipe' });
-    } catch (e) {
+    // Find the first available AI CLI tool
+    let availableTool = null;
+    const toolPreference = ['claude', 'cursor-agent', 'gemini'];
+    
+    for (const toolName of toolPreference) {
+      try {
+        const adapter = getCLIAdapter(toolName);
+        if (await adapter.isAvailable()) {
+          availableTool = { name: toolName, adapter };
+          break;
+        }
+      } catch (e) {
+        // Tool not available, try next
+      }
+    }
+    
+    if (!availableTool) {
       return res.status(500).json({ 
-        error: 'cursor-agent CLI not found',
-        message: 'Please install cursor-agent: curl https://cursor.com/install -fsS | bash'
+        error: 'No AI CLI tool found',
+        message: 'Please install an AI CLI tool (claude, cursor-agent, or gemini)'
       });
     }
     
-    // Call cursor-agent with the prompt
+    console.log(`[git.js] Using ${availableTool.name} to generate commit message...`);
+    
+    // Build the command based on the available tool
+    const executable = availableTool.adapter.getResolvedExecutable();
+    let args;
+    
+    switch (availableTool.name) {
+      case 'claude':
+        args = ['--print', '--output-format', 'text', prompt];
+        break;
+      case 'cursor-agent':
+        args = ['--workspace', repoFullPath, '-p', '--output-format', 'text', prompt];
+        break;
+      case 'gemini':
+        args = ['--prompt', prompt];
+        break;
+      default:
+        args = [prompt];
+    }
+    
+    // Call the AI CLI with the prompt
     const result = await new Promise((resolve, reject) => {
-      const args = [
-        '-p',  // Print mode (non-interactive)
-        '--output-format', 'text',  // Plain text output
-        prompt
-      ];
-      
-      // Add workspace context for better understanding
-      args.unshift('--workspace', repoFullPath);
-      
-      const agent = spawn('cursor-agent', args, {
+      const agent = spawn(executable, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: repoFullPath,
         timeout: 60000  // 60 second timeout
       });
       
@@ -555,21 +581,21 @@ Respond with ONLY the commit message, nothing else. No quotes, no explanation, j
       
       agent.stderr.on('data', (data) => {
         errorOutput += data.toString();
-        console.log('[git.js] cursor-agent stderr:', data.toString());
+        console.log(`[git.js] ${availableTool.name} stderr:`, data.toString());
       });
       
       agent.on('close', (code) => {
         if (code !== 0) {
-          console.error('[git.js] cursor-agent failed with code:', code);
+          console.error(`[git.js] ${availableTool.name} failed with code:`, code);
           console.error('[git.js] stderr:', errorOutput);
-          reject(new Error(`cursor-agent failed: ${errorOutput || 'Unknown error'}`));
+          reject(new Error(`${availableTool.name} failed: ${errorOutput || 'Unknown error'}`));
         } else {
           resolve(output.trim());
         }
       });
       
       agent.on('error', (err) => {
-        console.error('[git.js] cursor-agent spawn error:', err);
+        console.error(`[git.js] ${availableTool.name} spawn error:`, err);
         reject(err);
       });
     });

@@ -4,6 +4,7 @@ import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { checkAllToolsAvailability } from '../utils/CLIAdapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,86 +61,16 @@ router.get('/network', async (req, res) => {
   }
 });
 
-// Check if Cursor is running
-router.get('/cursor-status', async (req, res) => {
+// Get available AI CLI tools and their status
+router.get('/tools-status', async (req, res) => {
   try {
-    let isRunning = false;
-    let version = null;
-    
-    switch (os.platform()) {
-      case 'darwin':
-        try {
-          const { stdout } = await execAsync('pgrep -x "Cursor" || pgrep -x "cursor"');
-          isRunning = stdout.trim().length > 0;
-        } catch (e) {
-          isRunning = false;
-        }
-        break;
-        
-      case 'win32':
-        try {
-          const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq Cursor.exe" /NH');
-          isRunning = stdout.includes('Cursor.exe');
-        } catch (e) {
-          isRunning = false;
-        }
-        break;
-        
-      case 'linux':
-        try {
-          const { stdout } = await execAsync('pgrep -x cursor || pgrep -f "cursor --"');
-          isRunning = stdout.trim().length > 0;
-        } catch (e) {
-          isRunning = false;
-        }
-        break;
-    }
-    
+    const availability = await checkAllToolsAvailability();
     res.json({
-      isRunning,
-      version,
-      platform: os.platform()
+      tools: availability
     });
   } catch (error) {
-    console.error('Error checking Cursor status:', error);
-    res.status(500).json({ error: 'Failed to check Cursor status' });
-  }
-});
-
-// Open Cursor with a specific path
-router.post('/open-cursor', async (req, res) => {
-  try {
-    const { path: projectPath } = req.body;
-    
-    if (!projectPath) {
-      return res.status(400).json({ error: 'Path is required' });
-    }
-    
-    let command;
-    
-    switch (os.platform()) {
-      case 'darwin':
-        command = `open -a Cursor "${projectPath}"`;
-        break;
-      case 'win32':
-        command = `start "" "Cursor" "${projectPath}"`;
-        break;
-      case 'linux':
-        command = `cursor "${projectPath}" &`;
-        break;
-      default:
-        return res.status(400).json({ error: 'Unsupported platform' });
-    }
-    
-    await execAsync(command);
-    
-    res.json({
-      success: true,
-      message: `Opening ${projectPath} in Cursor`
-    });
-  } catch (error) {
-    console.error('Error opening Cursor:', error);
-    res.status(500).json({ error: 'Failed to open Cursor' });
+    console.error('Error checking tool status:', error);
+    res.status(500).json({ error: 'Failed to check tool status' });
   }
 });
 
@@ -167,7 +98,6 @@ router.post('/ios-build-run', async (req, res) => {
     const projectDir = `${iosClientDir}/CursorMobile`;
     const project = `${projectDir}/CursorMobile.xcodeproj`;
     const scheme = 'CursorMobile';
-    // Bundle ID from Xcode project - can be overridden via environment variable
     const bundleId = process.env.IOS_BUNDLE_ID || 'com.lovelesslabstx';
     const derivedData = `${iosClientDir}/build/DerivedData`;
     
@@ -180,7 +110,6 @@ router.post('/ios-build-run', async (req, res) => {
     // Step 1: Stop any running instance of the app
     console.log('[iOS Build] Step 1: Stopping any running instances...');
     if (isPhysicalDevice && deviceId) {
-      // For physical devices, we can't easily terminate - the new install will replace it
       console.log('[iOS Build] Physical device - skipping terminate (install will replace)');
     } else {
       try {
@@ -217,14 +146,13 @@ router.post('/ios-build-run', async (req, res) => {
     let buildOutput;
     try {
       const { stdout, stderr } = await execAsync(buildCommand, {
-        timeout: 300000, // 5 minute timeout for build
-        maxBuffer: 10 * 1024 * 1024 // 10MB buffer for build output
+        timeout: 300000,
+        maxBuffer: 10 * 1024 * 1024
       });
       buildOutput = stdout + stderr;
     } catch (buildError) {
       console.error('[iOS Build] Build failed:', buildError.message);
       
-      // Extract useful error info from xcodebuild output
       const errorOutput = buildError.stdout || buildError.stderr || buildError.message;
       const errorLines = errorOutput.split('\n')
         .filter(line => line.includes('error:') || line.includes('Error:'))
@@ -239,7 +167,6 @@ router.post('/ios-build-run', async (req, res) => {
       });
     }
     
-    // Check if build succeeded
     if (!buildOutput.includes('BUILD SUCCEEDED')) {
       console.error('[iOS Build] Build did not succeed');
       return res.status(500).json({
@@ -253,16 +180,13 @@ router.post('/ios-build-run', async (req, res) => {
     console.log('[iOS Build] Build succeeded!');
     
     if (isPhysicalDevice) {
-      // Physical device flow
       console.log('[iOS Build] Step 3: Installing on physical device...');
       
       const appPath = `${derivedData}/Build/Products/${configuration}-iphoneos/${scheme}.app`;
       
-      // Try using devicectl (Xcode 15+) first, fall back to ios-deploy
       let installSuccess = false;
       
       if (deviceId) {
-        // Try devicectl first (Xcode 15+)
         try {
           console.log('[iOS Build] Trying devicectl for install...');
           await execAsync(`xcrun devicectl device install app --device ${deviceId} "${appPath}"`, {
@@ -273,7 +197,6 @@ router.post('/ios-build-run', async (req, res) => {
         } catch (devicectlError) {
           console.log('[iOS Build] devicectl failed, trying ios-deploy...');
           
-          // Try ios-deploy as fallback
           try {
             await execAsync(`ios-deploy --id ${deviceId} --bundle "${appPath}" --noninteractive`, {
               timeout: 120000
@@ -287,7 +210,6 @@ router.post('/ios-build-run', async (req, res) => {
       }
       
       if (!installSuccess) {
-        // Last resort: try xcodebuild with install action
         try {
           console.log('[iOS Build] Trying xcodebuild install...');
           const installCommand = `xcodebuild \
@@ -315,17 +237,14 @@ router.post('/ios-build-run', async (req, res) => {
         }
       }
       
-      // Step 4: Launch the app on physical device
       console.log('[iOS Build] Step 4: Launching app on device...');
       try {
         if (deviceId) {
-          // Try devicectl launch
           await execAsync(`xcrun devicectl device process launch --device ${deviceId} "${bundleId}"`, {
             timeout: 30000
           });
         }
       } catch (launchError) {
-        // Launch failure is non-fatal - app might still be launching
         console.log('[iOS Build] Launch command failed, but app may have started:', launchError.message);
       }
       
@@ -340,7 +259,6 @@ router.post('/ios-build-run', async (req, res) => {
       });
       
     } else {
-      // Simulator flow (existing code)
       console.log('[iOS Build] Step 3: Booting simulator...');
       try {
         await execAsync(`xcrun simctl boot "${deviceName}" 2>/dev/null || true`);
@@ -348,17 +266,14 @@ router.post('/ios-build-run', async (req, res) => {
         // Simulator might already be booted
       }
       
-      // Open Simulator app
       try {
         await execAsync('open -a Simulator');
       } catch (e) {
         // Ignore
       }
       
-      // Give simulator time to fully boot
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Step 4: Install the app
       console.log('[iOS Build] Step 4: Installing app...');
       const appPath = `${derivedData}/Build/Products/${configuration}-iphonesimulator/${scheme}.app`;
       
@@ -376,7 +291,6 @@ router.post('/ios-build-run', async (req, res) => {
         });
       }
       
-      // Step 5: Launch the app
       console.log('[iOS Build] Step 5: Launching app...');
       try {
         await execAsync(`xcrun simctl launch "${deviceName}" "${bundleId}"`, {
@@ -416,7 +330,6 @@ router.post('/ios-build-run', async (req, res) => {
 // Get iOS devices (both simulators and physical devices)
 router.get('/ios-devices', async (req, res) => {
   try {
-    // Only works on macOS
     if (os.platform() !== 'darwin') {
       return res.status(400).json({ 
         success: false, 
@@ -434,7 +347,6 @@ router.get('/ios-devices', async (req, res) => {
       
       const data = JSON.parse(stdout);
       
-      // Parse the devices structure
       for (const [runtime, simDevices] of Object.entries(data.devices)) {
         if (runtime.includes('iOS')) {
           const iosVersion = runtime.replace(/.*iOS[- ]/, '').replace(/-/g, '.');
@@ -465,7 +377,6 @@ router.get('/ios-devices', async (req, res) => {
       
       if (data.result && data.result.devices) {
         for (const device of data.result.devices) {
-          // Only include iOS devices (not macOS, watchOS, etc.)
           if (device.deviceProperties?.osType === 'iOS' || 
               device.hardwareProperties?.platform === 'iOS') {
             devices.push({
@@ -473,7 +384,7 @@ router.get('/ios-devices', async (req, res) => {
               udid: device.hardwareProperties?.udid || device.identifier,
               state: device.connectionProperties?.transportType || 'connected',
               iosVersion: device.deviceProperties?.osVersionNumber || 'Unknown',
-              isBooted: true, // Physical devices are always "on" when connected
+              isBooted: true,
               isPhysicalDevice: true,
               deviceType: 'physical',
               connectionType: device.connectionProperties?.transportType || 'unknown'
@@ -482,7 +393,6 @@ router.get('/ios-devices', async (req, res) => {
         }
       }
     } catch (devicectlError) {
-      // devicectl might not be available (pre-Xcode 15), try xctrace
       console.log('[iOS Devices] devicectl not available, trying xctrace...');
       
       try {
@@ -490,7 +400,6 @@ router.get('/ios-devices', async (req, res) => {
           timeout: 30000
         });
         
-        // Parse xctrace output - format is "Device Name (iOS Version) (UDID)"
         const lines = stdout.split('\n');
         let inDevicesSection = false;
         
@@ -505,7 +414,6 @@ router.get('/ios-devices', async (req, res) => {
           }
           
           if (inDevicesSection && line.trim()) {
-            // Parse line like: "John's iPhone (17.0) (00008030-001234567890802E)"
             const match = line.match(/^(.+?)\s+\((\d+\.\d+(?:\.\d+)?)\)\s+\(([A-F0-9-]+)\)/i);
             if (match) {
               devices.push({
@@ -544,7 +452,6 @@ router.get('/ios-devices', async (req, res) => {
 // Legacy endpoint for backward compatibility
 router.get('/ios-simulators', async (req, res) => {
   try {
-    // Only works on macOS
     if (os.platform() !== 'darwin') {
       return res.status(400).json({ 
         success: false, 
@@ -559,7 +466,6 @@ router.get('/ios-simulators', async (req, res) => {
     const data = JSON.parse(stdout);
     const simulators = [];
     
-    // Parse the devices structure
     for (const [runtime, devices] of Object.entries(data.devices)) {
       if (runtime.includes('iOS')) {
         const iosVersion = runtime.replace(/.*iOS[- ]/, '').replace(/-/g, '.');
@@ -585,103 +491,6 @@ router.get('/ios-simulators', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to list simulators',
-      details: error.message
-    });
-  }
-});
-
-// Cache for models list (models don't change often)
-let modelsCache = null;
-let modelsCacheTime = 0;
-const MODELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-/**
- * GET /api/system/models
- * Get available AI models from cursor-agent
- * Returns: { models: [{ id, name, isDefault, isCurrent }] }
- */
-router.get('/models', async (req, res) => {
-  try {
-    // Check cache first
-    const now = Date.now();
-    if (modelsCache && (now - modelsCacheTime) < MODELS_CACHE_TTL) {
-      return res.json({ models: modelsCache, cached: true });
-    }
-    
-    // Execute cursor-agent --list-models
-    let stdout;
-    try {
-      const result = await execAsync('cursor-agent --list-models', {
-        timeout: 30000
-      });
-      stdout = result.stdout;
-    } catch (cmdError) {
-      // Check if cursor-agent is available
-      console.error('[Models] cursor-agent command failed:', cmdError.message);
-      return res.status(500).json({
-        error: 'Failed to get models',
-        details: 'cursor-agent CLI not available or command failed',
-        code: 'CURSOR_AGENT_ERROR'
-      });
-    }
-    
-    // Parse the output
-    // Format: "id - display name  (default)  (current)"
-    // Example:
-    // Available models
-    // 
-    // auto - Auto
-    // sonnet-4.5 - Claude 4.5 Sonnet  (current)
-    // opus-4.5-thinking - Claude 4.5 Opus (Thinking)  (default)
-    
-    const models = [];
-    const lines = stdout.split('\n');
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      
-      // Skip empty lines and header
-      if (!trimmed || trimmed.startsWith('Available models') || trimmed.startsWith('Tip:')) {
-        continue;
-      }
-      
-      // Parse: "id - name  (default)  (current)"
-      // Note: ID can contain hyphens (e.g., gpt-5.2-codex), so we split on " - " (space-hyphen-space)
-      const separatorIndex = trimmed.indexOf(' - ');
-      if (separatorIndex === -1) {
-        continue;
-      }
-      
-      const id = trimmed.substring(0, separatorIndex);
-      const rest = trimmed.substring(separatorIndex + 3); // Skip " - "
-      
-      // Clean up the name - remove (default) and (current) markers
-      let name = rest.replace(/\s*\(default\)\s*/g, '').replace(/\s*\(current\)\s*/g, '').trim();
-      const isDefault = trimmed.includes('(default)');
-      const isCurrent = trimmed.includes('(current)');
-      
-      if (id && name) {
-        models.push({
-          id,
-          name,
-          isDefault,
-          isCurrent
-        });
-      }
-    }
-    
-    // Update cache
-    modelsCache = models;
-    modelsCacheTime = now;
-    
-    console.log(`[Models] Fetched ${models.length} models from cursor-agent`);
-    
-    res.json({ models, cached: false });
-    
-  } catch (error) {
-    console.error('[Models] Error:', error);
-    res.status(500).json({
-      error: 'Failed to fetch models',
       details: error.message
     });
   }
@@ -714,8 +523,8 @@ router.post('/exec', async (req, res) => {
     
     const options = {
       cwd: cwd || os.homedir(),
-      timeout: 30000, // 30 second timeout
-      maxBuffer: 1024 * 1024 // 1MB max output
+      timeout: 30000,
+      maxBuffer: 1024 * 1024
     };
     
     const { stdout, stderr } = await execAsync(command, options);
@@ -739,21 +548,13 @@ router.post('/restart', async (req, res) => {
   try {
     const { delay = 2 } = req.body || {};
     
-    // Get the current server's PID - this is the exact process to kill
     const currentPid = process.pid;
     
     console.log(`[System] Server restart requested with ${delay}s delay (current PID: ${currentPid})`);
     
-    // Get the server directory (routes -> src -> server)
     const serverDir = path.resolve(__dirname, '../..');
-    
-    // Log file for debugging
     const logFile = path.join(serverDir, 'restart.log');
     
-    // Spawn a completely detached process that will:
-    // 1. Wait for the HTTP response to complete
-    // 2. Kill the current server by its exact PID
-    // 3. Start a new server
     const restarter = spawn('bash', ['-c', `
       echo "[$(date)] Restart script started, will kill PID ${currentPid}" >> "${logFile}"
       sleep ${delay}
@@ -768,7 +569,7 @@ router.post('/restart', async (req, res) => {
       stdio: 'ignore'
     });
     
-    restarter.unref();  // Don't wait for child
+    restarter.unref();
     
     console.log(`[System] Restart process spawned (PID: ${restarter.pid}), will kill server PID: ${currentPid}`);
     

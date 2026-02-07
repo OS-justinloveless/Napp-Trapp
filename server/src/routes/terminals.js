@@ -1,21 +1,19 @@
 import express from 'express';
-import { TerminalManager } from '../utils/TerminalManager.js';
 import { ptyManager } from '../utils/PTYManager.js';
 import { tmuxManager } from '../utils/TmuxManager.js';
 
 export const terminalRoutes = express.Router();
-const terminalManager = new TerminalManager();
 
 // Export managers for WebSocket use
-export { terminalManager, ptyManager, tmuxManager };
+export { ptyManager, tmuxManager };
 
 /**
  * GET /api/terminals
- * List all terminal sessions (Cursor IDE, PTY, and tmux terminals)
+ * List all terminal sessions (PTY and tmux terminals)
  * Query params:
- *   - projectPath: Filter by project path (required for Cursor IDE and tmux terminals)
+ *   - projectPath: Filter by project path (required for tmux terminals)
  *   - includeHistory: Include old/inactive terminals (default: false)
- *   - source: Filter by source ('cursor-ide', 'mobile-pty', 'tmux', or 'all') (default: 'all')
+ *   - source: Filter by source ('mobile-pty', 'tmux', or 'all') (default: 'all')
  */
 terminalRoutes.get('/', (req, res) => {
   try {
@@ -45,17 +43,6 @@ terminalRoutes.get('/', (req, res) => {
         terminals = terminals.concat(tmuxTerminals);
       } catch (tmuxError) {
         console.error('[Terminals] Error listing tmux terminals:', tmuxError);
-      }
-    }
-    
-    // Get Cursor IDE terminals (if projectPath is provided)
-    if ((source === 'all' || source === 'cursor-ide') && projectPath) {
-      try {
-        const cursorTerminals = terminalManager.readCursorIDETerminals(projectPath, includeHistoryBool);
-        console.log(`[Terminals] Found ${cursorTerminals.length} Cursor IDE terminals`);
-        terminals = terminals.concat(cursorTerminals);
-      } catch (cursorError) {
-        console.error('[Terminals] Error listing Cursor IDE terminals:', cursorError);
       }
     }
     
@@ -199,7 +186,7 @@ terminalRoutes.get('/tmux/sessions/:sessionName/windows', (req, res) => {
  * GET /api/terminals/:id
  * Get terminal metadata and content
  * Query params:
- *   - projectPath: Project path (required for Cursor IDE and tmux terminals)
+ *   - projectPath: Project path (required for tmux terminals)
  *   - includeContent: Whether to include terminal output content (default: true)
  */
 terminalRoutes.get('/:id', (req, res) => {
@@ -249,62 +236,9 @@ terminalRoutes.get('/:id', (req, res) => {
       return res.json(response);
     }
     
-    // Check if it's a Cursor IDE terminal
-    if (terminalManager.isCursorIDETerminal(id)) {
-      if (!projectPath) {
-        return res.status(400).json({ 
-          error: 'projectPath query parameter is required for Cursor IDE terminals' 
-        });
-      }
-      
-      const terminalData = terminalManager.readCursorTerminalContent(id, projectPath);
-      
-      if (!terminalData) {
-        return res.status(404).json({ 
-          error: 'Terminal not found',
-          id 
-        });
-      }
-      
-      const pid = parseInt(terminalData.metadata.pid, 10) || 0;
-      let isActive = false;
-      
-      if (pid > 0) {
-        try {
-          process.kill(pid, 0);
-          isActive = true;
-        } catch (e) {
-          // Process not running
-        }
-      }
-      
-      const response = {
-        terminal: {
-          id,
-          name: terminalManager.generateTerminalName(
-            terminalData.metadata.cwd || projectPath,
-            terminalData.metadata.active_command
-          ),
-          pid,
-          cwd: terminalData.metadata.cwd || projectPath,
-          active: isActive,
-          activeCommand: terminalData.metadata.active_command || null,
-          lastCommand: terminalData.metadata.last_command || null,
-          exitCode: terminalData.metadata.last_exit_code ? parseInt(terminalData.metadata.last_exit_code, 10) : null,
-          source: 'cursor-ide'
-        }
-      };
-      
-      if (includeContentBool) {
-        response.content = terminalData.content;
-      }
-      
-      return res.json(response);
-    }
-    
     return res.status(400).json({ 
       error: 'Invalid terminal ID format',
-      hint: 'Terminal IDs should be: pty-N (mobile), tmux-{sessionName}:{windowIndex}, or cursor-N (Cursor IDE)'
+      hint: 'Terminal IDs should be: pty-N (mobile) or tmux-{sessionName}:{windowIndex}'
     });
   } catch (error) {
     console.error('Error getting terminal:', error);
@@ -316,79 +250,14 @@ terminalRoutes.get('/:id', (req, res) => {
 });
 
 /**
- * GET /api/terminals/:id/content
- * Get terminal output content (Cursor IDE terminals only)
- * Query params:
- *   - projectPath: Project path (required)
- *   - tail: Number of lines from the end (optional)
- */
-terminalRoutes.get('/:id/content', (req, res) => {
-  try {
-    const { id } = req.params;
-    const { projectPath, tail } = req.query;
-    
-    // PTY terminals don't have stored content (output is streamed via WebSocket)
-    if (ptyManager.isPTYTerminal(id)) {
-      return res.status(400).json({ 
-        error: 'Content endpoint not available for PTY terminals',
-        message: 'PTY terminal output is streamed in real-time via WebSocket'
-      });
-    }
-    
-    if (!projectPath) {
-      return res.status(400).json({ 
-        error: 'projectPath query parameter is required' 
-      });
-    }
-    
-    if (!terminalManager.isCursorIDETerminal(id)) {
-      return res.status(400).json({ 
-        error: 'Invalid terminal ID format' 
-      });
-    }
-    
-    const terminalData = terminalManager.readCursorTerminalContent(id, projectPath);
-    
-    if (!terminalData) {
-      return res.status(404).json({ 
-        error: 'Terminal not found',
-        id 
-      });
-    }
-    
-    let content = terminalData.content;
-    
-    if (tail) {
-      const tailLines = parseInt(tail, 10);
-      if (tailLines > 0) {
-        const lines = content.split('\n');
-        content = lines.slice(-tailLines).join('\n');
-      }
-    }
-    
-    res.json({
-      id,
-      content,
-      metadata: terminalData.metadata
-    });
-  } catch (error) {
-    console.error('Error getting terminal content:', error);
-    res.status(500).json({ 
-      error: 'Failed to get terminal content',
-      message: error.message 
-    });
-  }
-});
-
-/**
  * POST /api/terminals/:id/input
  * Send input to a terminal
- * Body: { data, projectPath (for Cursor IDE terminals) }
+ * Body: { data }
  */
 terminalRoutes.post('/:id/input', (req, res) => {
   try {
     const { id } = req.params;
-    const { data, projectPath } = req.body;
+    const { data } = req.body;
     
     if (data === undefined || data === null) {
       return res.status(400).json({ 
@@ -413,15 +282,6 @@ terminalRoutes.post('/:id/input', (req, res) => {
       }
       tmuxManager.writeToWindow(sessionName, windowIndex, data);
       return res.json({ success: true });
-    }
-    
-    // Handle Cursor IDE terminals (read-only note)
-    if (terminalManager.isCursorIDETerminal(id)) {
-      return res.status(400).json({ 
-        error: 'Input to Cursor IDE terminals is not fully supported',
-        message: 'Due to macOS security restrictions, input injection to Cursor IDE terminals is limited. Use PTY or tmux terminals for full input support.',
-        hint: 'Create a new terminal with POST /api/terminals for full bidirectional support'
-      });
     }
     
     return res.status(400).json({ 
@@ -471,14 +331,6 @@ terminalRoutes.post('/:id/resize', (req, res) => {
       return res.json({ success: true });
     }
     
-    // Cursor IDE terminals don't support resize via API
-    if (terminalManager.isCursorIDETerminal(id)) {
-      return res.status(400).json({
-        error: 'Resize is not supported for Cursor IDE terminals',
-        message: 'Cursor IDE terminal dimensions are managed by Cursor itself.'
-      });
-    }
-    
     return res.status(400).json({ 
       error: 'Invalid terminal ID format'
     });
@@ -510,14 +362,6 @@ terminalRoutes.delete('/:id', (req, res) => {
       const { sessionName, windowIndex } = tmuxManager.parseTerminalId(id);
       tmuxManager.killWindow(sessionName, windowIndex);
       return res.json({ success: true });
-    }
-    
-    // Cursor IDE terminals can't be deleted via API
-    if (terminalManager.isCursorIDETerminal(id)) {
-      return res.status(400).json({
-        error: 'Deleting Cursor IDE terminals via API is not supported',
-        message: 'Close terminals directly in the Cursor IDE.'
-      });
     }
     
     return res.status(400).json({ 

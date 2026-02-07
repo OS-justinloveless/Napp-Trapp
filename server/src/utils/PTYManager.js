@@ -6,8 +6,8 @@ import fs from 'fs';
 console.log('[PTYManager] node-pty loaded successfully');
 
 /**
- * Manages our own PTY (pseudo-terminal) sessions
- * These are fully controlled terminal sessions, separate from Cursor IDE terminals
+ * Manages PTY (pseudo-terminal) sessions
+ * These are fully controlled terminal sessions with bidirectional I/O
  */
 export class PTYManager {
   constructor() {

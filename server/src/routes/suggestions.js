@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
 import { SuggestionsReader } from '../utils/SuggestionsReader.js';
 
 const router = Router();
-const cursorWorkspace = new CursorWorkspace();
+const projectManager = new ProjectManager();
 const suggestionsReader = new SuggestionsReader();
 
 /**
@@ -24,7 +24,7 @@ router.get('/:projectId', async (req, res) => {
     const { type = 'all', query = '' } = req.query;
 
     // Get project details to get the path
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
@@ -78,7 +78,7 @@ router.get('/:projectId', async (req, res) => {
 router.get('/:projectId/rules', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
@@ -99,7 +99,7 @@ router.get('/:projectId/rules', async (req, res) => {
 router.get('/:projectId/agents', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
@@ -120,7 +120,7 @@ router.get('/:projectId/agents', async (req, res) => {
 router.get('/:projectId/commands', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });

@@ -4,13 +4,20 @@ import os from 'os';
 
 /**
  * SuggestionsReader - Reads rules, agents, commands, and skills from the filesystem
- * for @ and / autocomplete suggestions in the iOS app.
+ * for @ and / autocomplete suggestions.
+ * 
+ * IDE-agnostic: scans common config directory patterns used by various tools
+ * (e.g., .cursor/, .vscode/, .claude/, project-local config).
  */
 export class SuggestionsReader {
   constructor() {
     this.homeDir = os.homedir();
     this.cache = new Map();
     this.cacheTimeout = 30000; // 30 seconds
+    
+    // Config directory names to scan for rules/agents/commands
+    // Supports multiple IDEs and tools
+    this.configDirs = ['.cursor', '.vscode', '.claude', '.napptrapp'];
   }
 
   /**
@@ -70,54 +77,77 @@ export class SuggestionsReader {
   }
 
   /**
-   * Read project rules from .cursor/rules/*.mdc
+   * Read project rules from {configDir}/rules/*.mdc or *.md
+   * Scans across multiple config directories
    */
   async getProjectRules(projectPath) {
     const rules = [];
-    const rulesDir = path.join(projectPath, '.cursor', 'rules');
 
-    try {
-      const files = await fs.readdir(rulesDir);
-      
-      for (const file of files) {
-        if (!file.endsWith('.mdc')) continue;
+    for (const configDir of this.configDirs) {
+      const rulesDir = path.join(projectPath, configDir, 'rules');
+
+      try {
+        const files = await fs.readdir(rulesDir);
         
-        try {
-          const filePath = path.join(rulesDir, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const { frontmatter } = this.parseFrontmatter(content);
+        for (const file of files) {
+          if (!file.endsWith('.mdc') && !file.endsWith('.md')) continue;
           
-          const name = path.basename(file, '.mdc');
-          rules.push({
-            id: `rule:${name}`,
-            type: 'rule',
-            name: name,
-            description: frontmatter.description || null,
-            alwaysApply: frontmatter.alwaysApply || false,
-            globs: frontmatter.globs || null,
-            path: filePath
-          });
-        } catch (e) {
-          // Skip files that can't be read
-          console.error(`Error reading rule file ${file}:`, e.message);
+          try {
+            const filePath = path.join(rulesDir, file);
+            const content = await fs.readFile(filePath, 'utf-8');
+            const { frontmatter } = this.parseFrontmatter(content);
+            
+            const ext = path.extname(file);
+            const name = path.basename(file, ext);
+            
+            // Skip duplicates (first config dir wins)
+            if (rules.find(r => r.name === name)) continue;
+            
+            rules.push({
+              id: `rule:${name}`,
+              type: 'rule',
+              name: name,
+              description: frontmatter.description || null,
+              alwaysApply: frontmatter.alwaysApply || false,
+              globs: frontmatter.globs || null,
+              path: filePath,
+              source: configDir
+            });
+          } catch (e) {
+            // Skip files that can't be read
+            console.error(`Error reading rule file ${file}:`, e.message);
+          }
         }
+      } catch (e) {
+        // Rules directory doesn't exist for this config dir
       }
-    } catch (e) {
-      // Rules directory doesn't exist
     }
 
     return rules;
   }
 
   /**
-   * Read agents from .cursor/agents/*.md (project) + ~/.cursor/agents/*.md (user)
+   * Read agents from project and user-level config directories
    */
   async getAgents(projectPath) {
     const agents = [];
-    const locations = [
-      { dir: path.join(projectPath, '.cursor', 'agents'), scope: 'project' },
-      { dir: path.join(this.homeDir, '.cursor', 'agents'), scope: 'user' }
-    ];
+    const locations = [];
+
+    // Project-level agents
+    for (const configDir of this.configDirs) {
+      locations.push({
+        dir: path.join(projectPath, configDir, 'agents'),
+        scope: 'project'
+      });
+    }
+
+    // User-level agents
+    for (const configDir of this.configDirs) {
+      locations.push({
+        dir: path.join(this.homeDir, configDir, 'agents'),
+        scope: 'user'
+      });
+    }
 
     for (const { dir, scope } of locations) {
       try {
@@ -133,7 +163,7 @@ export class SuggestionsReader {
             
             const name = frontmatter.name || path.basename(file, '.md');
             
-            // Check if we already have this agent (project takes priority)
+            // Check if we already have this agent (first match wins)
             if (agents.find(a => a.name === name)) continue;
             
             agents.push({
@@ -159,53 +189,65 @@ export class SuggestionsReader {
   }
 
   /**
-   * Read commands from .cursor/commands/*.md
+   * Read commands from {configDir}/commands/*.md
    */
   async getCommands(projectPath) {
     const commands = [];
-    const commandsDir = path.join(projectPath, '.cursor', 'commands');
 
-    try {
-      const files = await fs.readdir(commandsDir);
-      
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
+    for (const configDir of this.configDirs) {
+      const commandsDir = path.join(projectPath, configDir, 'commands');
+
+      try {
+        const files = await fs.readdir(commandsDir);
         
-        try {
-          const filePath = path.join(commandsDir, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const { frontmatter, content: bodyContent } = this.parseFrontmatter(content);
+        for (const file of files) {
+          if (!file.endsWith('.md')) continue;
           
-          const name = path.basename(file, '.md');
-          const description = frontmatter.description || this.extractDescription(bodyContent);
-          
-          commands.push({
-            id: `command:${name}`,
-            type: 'command',
-            name: name,
-            description: description,
-            path: filePath
-          });
-        } catch (e) {
-          console.error(`Error reading command file ${file}:`, e.message);
+          try {
+            const filePath = path.join(commandsDir, file);
+            const content = await fs.readFile(filePath, 'utf-8');
+            const { frontmatter, content: bodyContent } = this.parseFrontmatter(content);
+            
+            const name = path.basename(file, '.md');
+            
+            // Skip duplicates
+            if (commands.find(c => c.name === name)) continue;
+            
+            const description = frontmatter.description || this.extractDescription(bodyContent);
+            
+            commands.push({
+              id: `command:${name}`,
+              type: 'command',
+              name: name,
+              description: description,
+              path: filePath
+            });
+          } catch (e) {
+            console.error(`Error reading command file ${file}:`, e.message);
+          }
         }
+      } catch (e) {
+        // Commands directory doesn't exist
       }
-    } catch (e) {
-      // Commands directory doesn't exist
     }
 
     return commands;
   }
 
   /**
-   * Read skills from ~/.cursor/skills-cursor/ and ~/.codex/skills/
+   * Read skills from user-level skill directories
    */
   async getSkills() {
     const skills = [];
-    const skillsLocations = [
-      path.join(this.homeDir, '.cursor', 'skills-cursor'),
-      path.join(this.homeDir, '.codex', 'skills')
-    ];
+    const skillsLocations = [];
+
+    // Scan for skills across multiple config directories
+    for (const configDir of this.configDirs) {
+      skillsLocations.push(path.join(this.homeDir, configDir, 'skills'));
+      skillsLocations.push(path.join(this.homeDir, configDir, 'skills-cursor'));
+    }
+    // Also check legacy paths
+    skillsLocations.push(path.join(this.homeDir, '.codex', 'skills'));
 
     for (const skillsDir of skillsLocations) {
       try {
@@ -213,7 +255,7 @@ export class SuggestionsReader {
         
         for (const entry of entries) {
           if (!entry.isDirectory()) continue;
-          if (entry.name.startsWith('.')) continue; // Skip hidden directories
+          if (entry.name.startsWith('.')) continue;
           
           const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
           

@@ -30,16 +30,6 @@ export default function ProjectsPage() {
     }
   }
 
-  async function openProject(projectId) {
-    try {
-      await apiRequest(`/api/projects/${projectId}/open`, {
-        method: 'POST'
-      });
-    } catch (err) {
-      console.error('Failed to open project:', err);
-    }
-  }
-
   function formatDate(dateString) {
     const date = new Date(dateString);
     const now = new Date();
@@ -90,7 +80,7 @@ export default function ProjectsPage() {
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>📂</span>
           <h3>No projects found</h3>
-          <p>Recent Cursor projects will appear here</p>
+          <p>Register a folder or create a new project to get started</p>
         </div>
       ) : (
         <div className={styles.projectList}>
@@ -110,17 +100,7 @@ export default function ProjectsPage() {
                   </span>
                 </div>
               </div>
-              <div className={styles.projectActions}>
-                <button 
-                  className={styles.openButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openProject(project.id);
-                  }}
-                >
-                  Open in Cursor
-                </button>
-              </div>
+              <span className={styles.arrow}>›</span>
             </div>
           ))}
         </div>
