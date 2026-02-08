@@ -390,6 +390,29 @@ struct GitView: View {
             GitDiffSheet(project: project, file: file, staged: staged, repoPath: repoPath)
         case .diffUntracked(let path, let repoPath):
             GitDiffSheet(project: project, untrackedFilePath: path, repoPath: repoPath)
+        case .commitDetail(let commit, let repoPath):
+            GitCommitDetailSheet(project: project, commit: commit, repoPath: repoPath) {
+                Task {
+                    // Refresh after commit operations (checkout, reset, revert, etc.)
+                    if let rp = repoPath, let repo = repositories.first(where: { $0.path == rp }) {
+                        await refreshRepositoryStatus(repo)
+                    } else if let rootRepo = repositories.first(where: { $0.isRoot }) {
+                        await refreshRepositoryStatus(rootRepo)
+                    }
+                    repoRefreshTrigger = UUID()
+                }
+            }
+        case .graph(let repoPath):
+            GitGraphSheet(project: project, repoPath: repoPath) {
+                Task {
+                    if let rp = repoPath, let repo = repositories.first(where: { $0.path == rp }) {
+                        await refreshRepositoryStatus(repo)
+                    } else if let rootRepo = repositories.first(where: { $0.isRoot }) {
+                        await refreshRepositoryStatus(rootRepo)
+                    }
+                    repoRefreshTrigger = UUID()
+                }
+            }
         }
     }
     

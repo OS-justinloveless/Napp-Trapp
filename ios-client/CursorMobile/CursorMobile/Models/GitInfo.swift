@@ -134,11 +134,45 @@ struct GitCommit: Codable, Identifiable, Hashable {
     let author: GitAuthor
     let timestamp: Int
     let subject: String
+    let parents: [String]?
+    let refs: [String]?
     
     var id: String { hash }
     
     var date: Date {
         Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+    }
+    
+    /// Whether this is a merge commit (has more than one parent)
+    var isMerge: Bool {
+        (parents?.count ?? 0) > 1
+    }
+    
+    /// Relative date string for display
+    var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+    
+    /// Branch refs (filter out HEAD and tag refs)
+    var branchRefs: [String] {
+        (refs ?? []).filter { !$0.hasPrefix("tag: ") && $0 != "HEAD" }
+    }
+    
+    /// Tag refs
+    var tagRefs: [String] {
+        (refs ?? []).compactMap { ref in
+            if ref.hasPrefix("tag: ") {
+                return String(ref.dropFirst(5))
+            }
+            return nil
+        }
+    }
+    
+    /// Whether HEAD points to this commit
+    var isHEAD: Bool {
+        (refs ?? []).contains { $0 == "HEAD" || $0.contains("HEAD -> ") }
     }
 }
 
@@ -149,6 +183,93 @@ struct GitAuthor: Codable, Hashable {
 
 struct GitLogResponse: Codable {
     let commits: [GitCommit]
+}
+
+// MARK: - Git Commit Detail
+
+/// Detailed information about a single commit, including changed files
+struct GitCommitDetail: Codable, Identifiable {
+    let hash: String
+    let shortHash: String
+    let author: GitAuthor
+    let timestamp: Int
+    let subject: String
+    let body: String?
+    let parents: [String]?
+    let refs: [String]?
+    let files: [GitCommitFile]?
+    
+    var id: String { hash }
+    
+    var date: Date {
+        Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+    }
+    
+    /// Full commit message (subject + body)
+    var fullMessage: String {
+        if let body = body, !body.isEmpty {
+            return "\(subject)\n\n\(body)"
+        }
+        return subject
+    }
+    
+    /// Total additions across all files
+    var totalAdditions: Int {
+        (files ?? []).reduce(0) { $0 + $1.additions }
+    }
+    
+    /// Total deletions across all files
+    var totalDeletions: Int {
+        (files ?? []).reduce(0) { $0 + $1.deletions }
+    }
+}
+
+/// A file changed in a commit with stats
+struct GitCommitFile: Codable, Identifiable, Hashable {
+    let path: String
+    let additions: Int
+    let deletions: Int
+    let status: String  // "modified", "added", "deleted", "renamed", "copied"
+    let oldPath: String?
+    
+    var id: String { path }
+    
+    /// SF Symbol for this status
+    var statusIcon: String {
+        switch status {
+        case "modified": return "pencil"
+        case "added": return "plus"
+        case "deleted": return "minus"
+        case "renamed": return "arrow.right"
+        case "copied": return "doc.on.doc"
+        default: return "questionmark"
+        }
+    }
+    
+    /// Color for this status
+    var statusColor: String {
+        switch status {
+        case "modified": return "orange"
+        case "added": return "green"
+        case "deleted": return "red"
+        case "renamed", "copied": return "blue"
+        default: return "gray"
+        }
+    }
+    
+    /// Display filename
+    var fileName: String {
+        path.components(separatedBy: "/").last ?? path
+    }
+    
+    /// Display directory
+    var directory: String? {
+        let parts = path.components(separatedBy: "/")
+        if parts.count > 1 {
+            return parts.dropLast().joined(separator: "/")
+        }
+        return nil
+    }
 }
 
 // MARK: - Git Remotes
@@ -260,10 +381,26 @@ struct GitCheckoutRequest: Codable {
 struct GitCreateBranchRequest: Codable {
     let name: String
     let checkout: Bool?
+    let startPoint: String?
 }
 
 struct GitFetchRequest: Codable {
     let remote: String?
+}
+
+struct GitHashRequest: Codable {
+    let hash: String
+}
+
+struct GitTagRequest: Codable {
+    let name: String
+    let hash: String?
+    let message: String?
+}
+
+struct GitResetRequest: Codable {
+    let hash: String
+    let mode: String  // "soft", "mixed", "hard"
 }
 
 // MARK: - API Response Types

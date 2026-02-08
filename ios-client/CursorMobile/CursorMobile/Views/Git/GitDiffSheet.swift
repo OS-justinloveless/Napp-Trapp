@@ -9,6 +9,11 @@ struct GitDiffSheet: View {
     /// For untracked (new) files, we only need the file path
     let untrackedFilePath: String?
     
+    /// For viewing a diff from a specific commit
+    let commitHash: String?
+    /// Display-only file path when viewing commit diffs (no GitFileChange needed)
+    let commitFilePath: String?
+    
     @EnvironmentObject var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
     
@@ -27,6 +32,8 @@ struct GitDiffSheet: View {
         self.staged = staged
         self.repoPath = nil
         self.untrackedFilePath = nil
+        self.commitHash = nil
+        self.commitFilePath = nil
     }
     
     /// Initializer for tracked files with repoPath
@@ -36,6 +43,8 @@ struct GitDiffSheet: View {
         self.staged = staged
         self.repoPath = repoPath
         self.untrackedFilePath = nil
+        self.commitHash = nil
+        self.commitFilePath = nil
     }
     
     /// Initializer for untracked (new) files - shows all content as added (backward compatibility)
@@ -45,6 +54,8 @@ struct GitDiffSheet: View {
         self.staged = false
         self.repoPath = nil
         self.untrackedFilePath = untrackedFilePath
+        self.commitHash = nil
+        self.commitFilePath = nil
     }
     
     /// Initializer for untracked (new) files with repoPath
@@ -54,6 +65,19 @@ struct GitDiffSheet: View {
         self.staged = false
         self.repoPath = repoPath
         self.untrackedFilePath = untrackedFilePath
+        self.commitHash = nil
+        self.commitFilePath = nil
+    }
+    
+    /// Initializer for viewing a file diff from a specific commit
+    init(project: Project, commitFilePath: String, commitHash: String, repoPath: String?) {
+        self.project = project
+        self.file = nil
+        self.staged = false
+        self.repoPath = repoPath
+        self.untrackedFilePath = nil
+        self.commitHash = commitHash
+        self.commitFilePath = commitFilePath
     }
     
     /// The display file name
@@ -62,6 +86,8 @@ struct GitDiffSheet: View {
             return file.path.components(separatedBy: "/").last ?? file.path
         } else if let path = untrackedFilePath {
             return path.components(separatedBy: "/").last ?? path
+        } else if let path = commitFilePath {
+            return path.components(separatedBy: "/").last ?? path
         }
         return "Unknown"
     }
@@ -69,6 +95,22 @@ struct GitDiffSheet: View {
     /// Whether this is a new/untracked file
     private var isNewFile: Bool {
         untrackedFilePath != nil
+    }
+    
+    /// Whether this is a commit-based diff
+    private var isCommitDiff: Bool {
+        commitHash != nil
+    }
+    
+    /// Subtitle for the toolbar
+    private var diffSubtitle: String {
+        if isCommitDiff, let hash = commitHash {
+            return "Commit \(String(hash.prefix(7)))"
+        } else if isNewFile {
+            return "New File"
+        } else {
+            return staged ? "Staged" : "Unstaged"
+        }
     }
     
     private var api: APIService? {
@@ -94,7 +136,7 @@ struct GitDiffSheet: View {
                         VStack(spacing: 0) {
                             Text(displayFileName)
                                 .font(.headline)
-                            Text(isNewFile ? "New File" : (staged ? "Staged" : "Unstaged"))
+                            Text(diffSubtitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -106,7 +148,9 @@ struct GitDiffSheet: View {
             guard !hasStartedLoading else { return }
             hasStartedLoading = true
             loadTask = Task {
-                if isNewFile {
+                if isCommitDiff {
+                    await loadCommitDiff()
+                } else if isNewFile {
                     await loadNewFileDiff()
                 } else {
                     await loadDiff()
@@ -248,6 +292,49 @@ struct GitDiffSheet: View {
             }.value
             
             // Check if task was cancelled before updating UI
+            guard !Task.isCancelled else { return }
+            
+            diffLines = parsedLines
+            isLoading = false
+        } catch {
+            guard !Task.isCancelled else { return }
+            errorMessage = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    /// Loads a diff for a file in a specific commit
+    @MainActor
+    private func loadCommitDiff() async {
+        guard let api = api, let hash = commitHash else {
+            isLoading = false
+            errorMessage = "Not connected to server"
+            return
+        }
+        
+        let filePath = commitFilePath ?? file?.path
+        guard let filePath = filePath else {
+            isLoading = false
+            errorMessage = "No file path"
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let result = try await api.gitDiffFull(projectId: project.id, file: filePath, commitHash: hash, repoPath: repoPath)
+            
+            guard !Task.isCancelled else { return }
+            
+            diffContent = result.diff
+            isTruncated = result.truncated
+            
+            let content = result.diff
+            let parsedLines = await Task.detached(priority: .userInitiated) {
+                parseDiffContent(content)
+            }.value
+            
             guard !Task.isCancelled else { return }
             
             diffLines = parsedLines

@@ -432,31 +432,242 @@ export class GitManager {
   }
 
   /**
-   * Get recent commits
+   * Get diff for a specific file in a specific commit
+   * @param {string} projectPath - Project directory
+   * @param {string} commitHash - The commit hash
+   * @param {string} file - File path to get diff for
+   * @param {number} [maxLines=2000] - Maximum number of lines to return
+   */
+  async getCommitDiff(projectPath, commitHash, file, maxLines = 2000) {
+    if (!commitHash) throw new Error('Commit hash is required');
+    // Use `git diff <parent>..<commit> -- <file>` for the diff
+    // For root commits (no parent), use `git diff --root <commit> -- <file>`
+    // Simplest approach: `git show <commit> -- <file>` gives the diff
+    const args = ['show', '--format=', commitHash, '--', file];
+    const { stdout } = await this.execGit(projectPath, args, { timeout: 10000 });
+
+    const lines = stdout.split('\n');
+    const totalLines = lines.length;
+    const truncated = totalLines > maxLines;
+
+    const limitedDiff = truncated
+      ? lines.slice(0, maxLines).join('\n') + `\n\n... [Diff truncated: showing ${maxLines} of ${totalLines} lines]`
+      : stdout;
+
+    return {
+      diff: limitedDiff,
+      truncated,
+      totalLines
+    };
+  }
+
+  /**
+   * Get recent commits with graph data (parents + refs)
    * @param {string} projectPath - Project directory
    * @param {number} [limit=10] - Number of commits to retrieve
+   * @param {number} [skip=0] - Number of commits to skip (for pagination)
    */
-  async getLog(projectPath, limit = 10) {
-    const { stdout } = await this.execGit(projectPath, [
+  async getLog(projectPath, limit = 10, skip = 0) {
+    // Use NUL byte as record separator to handle subjects containing '|'
+    const args = [
       'log',
-      `-${limit}`,
-      '--format=%H|%h|%an|%ae|%at|%s'
-    ]);
+      `--max-count=${limit}`,
+      '--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%P%x00%D'
+    ];
+    if (skip > 0) {
+      args.push(`--skip=${skip}`);
+    }
+    const { stdout } = await this.execGit(projectPath, args);
 
     const commits = [];
     for (const line of stdout.split('\n')) {
       if (!line) continue;
-      const [hash, shortHash, authorName, authorEmail, timestamp, subject] = line.split('|');
+      const parts = line.split('\x00');
+      if (parts.length < 6) continue;
+      const [hash, shortHash, authorName, authorEmail, timestampStr, subject, parentsStr, refsStr] = parts;
+      const parents = parentsStr ? parentsStr.trim().split(' ').filter(Boolean) : [];
+      const refs = refsStr ? refsStr.trim().split(', ').filter(Boolean) : [];
       commits.push({
         hash,
         shortHash,
         author: { name: authorName, email: authorEmail },
-        timestamp: parseInt(timestamp, 10) * 1000,
-        subject
+        timestamp: parseInt(timestampStr, 10) * 1000,
+        subject,
+        parents,
+        refs
       });
     }
 
     return commits;
+  }
+
+  /**
+   * Get detailed info for a single commit
+   * @param {string} projectPath - Project directory
+   * @param {string} hash - Commit hash
+   * @returns {Promise<object>} - Commit detail with full body and changed files
+   */
+  async getCommitDetail(projectPath, hash) {
+    if (!hash) throw new Error('Commit hash is required');
+
+    // Get commit metadata with full body
+    const { stdout: metaOut } = await this.execGit(projectPath, [
+      'log', '-1', hash,
+      '--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%P%x00%D%x00%b'
+    ]);
+
+    const parts = metaOut.trim().split('\x00');
+    if (parts.length < 8) throw new Error('Failed to parse commit');
+    const [commitHash, shortHash, authorName, authorEmail, timestampStr, subject, parentsStr, refsStr, ...bodyParts] = parts;
+    const body = bodyParts.join('\x00').trim();
+    const parents = parentsStr ? parentsStr.trim().split(' ').filter(Boolean) : [];
+    const refs = refsStr ? refsStr.trim().split(', ').filter(Boolean) : [];
+
+    // Get changed files with stats
+    const { stdout: statOut } = await this.execGit(projectPath, [
+      'diff-tree', '--no-commit-id', '-r', '--numstat', '--find-renames', hash
+    ]);
+
+    // Get file status letters
+    const { stdout: nameStatusOut } = await this.execGit(projectPath, [
+      'diff-tree', '--no-commit-id', '-r', '--name-status', '--find-renames', hash
+    ]);
+
+    // Parse name-status into a map
+    const statusMap = {};
+    for (const line of nameStatusOut.split('\n')) {
+      if (!line) continue;
+      const statusMatch = line.match(/^([AMDRC]\d*)\t(.+?)(?:\t(.+))?$/);
+      if (statusMatch) {
+        const statusCode = statusMatch[1][0]; // first char only
+        const filePath = statusMatch[3] || statusMatch[2]; // renamed: new path, else: path
+        const oldPath = statusMatch[3] ? statusMatch[2] : null;
+        const statusNames = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied' };
+        statusMap[filePath] = { status: statusNames[statusCode] || 'modified', oldPath };
+      }
+    }
+
+    const files = [];
+    for (const line of statOut.split('\n')) {
+      if (!line) continue;
+      const numstatMatch = line.match(/^(\d+|-)\t(\d+|-)\t(.+?)(?:\t(.+))?$/);
+      if (numstatMatch) {
+        const additions = numstatMatch[1] === '-' ? 0 : parseInt(numstatMatch[1], 10);
+        const deletions = numstatMatch[2] === '-' ? 0 : parseInt(numstatMatch[2], 10);
+        // For renames the format is: additions deletions oldpath\tnewpath
+        const filePath = numstatMatch[4] || numstatMatch[3];
+        const info = statusMap[filePath] || { status: 'modified', oldPath: null };
+        files.push({
+          path: filePath,
+          additions,
+          deletions,
+          status: info.status,
+          oldPath: info.oldPath
+        });
+      }
+    }
+
+    return {
+      hash: commitHash,
+      shortHash,
+      author: { name: authorName, email: authorEmail },
+      timestamp: parseInt(timestampStr, 10) * 1000,
+      subject,
+      body,
+      parents,
+      refs,
+      files
+    };
+  }
+
+  /**
+   * Checkout a commit in detached HEAD mode
+   * @param {string} projectPath - Project directory
+   * @param {string} hash - Commit hash to checkout
+   */
+  async checkoutCommit(projectPath, hash) {
+    if (!hash) throw new Error('Commit hash is required');
+    const { stdout, stderr } = await this.execGit(projectPath, ['checkout', hash]);
+    return { success: true, output: stdout || stderr };
+  }
+
+  /**
+   * Cherry-pick a commit onto the current branch
+   * @param {string} projectPath - Project directory
+   * @param {string} hash - Commit hash to cherry-pick
+   */
+  async cherryPick(projectPath, hash) {
+    if (!hash) throw new Error('Commit hash is required');
+    const { stdout, stderr } = await this.execGit(projectPath, ['cherry-pick', hash]);
+    return { success: true, output: stdout || stderr };
+  }
+
+  /**
+   * Revert a commit (creates a new revert commit)
+   * @param {string} projectPath - Project directory
+   * @param {string} hash - Commit hash to revert
+   */
+  async revertCommit(projectPath, hash) {
+    if (!hash) throw new Error('Commit hash is required');
+    const { stdout, stderr } = await this.execGit(projectPath, ['revert', '--no-edit', hash]);
+    return { success: true, output: stdout || stderr };
+  }
+
+  /**
+   * Create a tag
+   * @param {string} projectPath - Project directory
+   * @param {string} name - Tag name
+   * @param {string} [hash] - Commit hash to tag (defaults to HEAD)
+   * @param {string} [message] - Optional tag message (creates annotated tag)
+   */
+  async createTag(projectPath, name, hash = null, message = null) {
+    if (!name) throw new Error('Tag name is required');
+    const args = ['tag'];
+    if (message) {
+      args.push('-a', name, '-m', message);
+    } else {
+      args.push(name);
+    }
+    if (hash) {
+      args.push(hash);
+    }
+    const { stdout, stderr } = await this.execGit(projectPath, args);
+    return { success: true, output: stdout || stderr };
+  }
+
+  /**
+   * Reset to a commit
+   * @param {string} projectPath - Project directory
+   * @param {string} hash - Commit hash to reset to
+   * @param {string} [mode='mixed'] - Reset mode: 'soft', 'mixed', or 'hard'
+   */
+  async resetToCommit(projectPath, hash, mode = 'mixed') {
+    if (!hash) throw new Error('Commit hash is required');
+    const validModes = ['soft', 'mixed', 'hard'];
+    if (!validModes.includes(mode)) {
+      throw new Error(`Invalid reset mode: ${mode}. Must be one of: ${validModes.join(', ')}`);
+    }
+    const { stdout, stderr } = await this.execGit(projectPath, ['reset', `--${mode}`, hash]);
+    return { success: true, output: stdout || stderr };
+  }
+
+  /**
+   * Create a branch from a specific commit
+   * @param {string} projectPath - Project directory
+   * @param {string} name - New branch name
+   * @param {string} startPoint - Commit hash or ref to start from
+   * @param {boolean} [checkout=true] - Whether to checkout the new branch
+   */
+  async createBranchFrom(projectPath, name, startPoint, checkout = true) {
+    if (!name) throw new Error('Branch name is required');
+    if (!startPoint) throw new Error('Start point is required');
+
+    if (checkout) {
+      await this.execGit(projectPath, ['checkout', '-b', name, startPoint]);
+    } else {
+      await this.execGit(projectPath, ['branch', name, startPoint]);
+    }
+    return { success: true, branch: name };
   }
 
   /**

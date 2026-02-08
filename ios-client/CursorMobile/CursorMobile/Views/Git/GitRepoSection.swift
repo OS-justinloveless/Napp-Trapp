@@ -8,6 +8,8 @@ enum GitSheetType: Identifiable, Equatable {
     case branch(currentBranch: String, repoPath: String?)
     case diffTracked(file: GitFileChange, staged: Bool, repoPath: String?)
     case diffUntracked(path: String, repoPath: String?)
+    case commitDetail(commit: GitCommit, repoPath: String?)
+    case graph(repoPath: String?)
     
     var id: String {
         switch self {
@@ -19,12 +21,16 @@ enum GitSheetType: Identifiable, Equatable {
             return "diff-tracked-\(file.path)-\(staged)-\(repoPath ?? "root")"
         case .diffUntracked(let path, let repoPath):
             return "diff-untracked-\(path)-\(repoPath ?? "root")"
+        case .commitDetail(let commit, let repoPath):
+            return "commit-detail-\(commit.hash)-\(repoPath ?? "root")"
+        case .graph(let repoPath):
+            return "graph-\(repoPath ?? "root")"
         }
     }
     
     var repoPath: String? {
         switch self {
-        case .commit(_, let rp), .branch(_, let rp), .diffTracked(_, _, let rp), .diffUntracked(_, let rp):
+        case .commit(_, let rp), .branch(_, let rp), .diffTracked(_, _, let rp), .diffUntracked(_, let rp), .commitDetail(_, let rp), .graph(let rp):
             return rp
         }
     }
@@ -155,6 +161,9 @@ struct GitRepoSection: View {
                     if isSelectionMode && !selectedUnstagedPaths.isEmpty {
                         batchUndoButton
                     }
+                    
+                    // Commit history graph
+                    historySection
                 }
             }
         } header: {
@@ -434,6 +443,26 @@ struct GitRepoSection: View {
                         .foregroundStyle(.green)
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+    
+    // MARK: - History Section
+    
+    @ViewBuilder
+    private var historySection: some View {
+        Button {
+            onShowSheet?(.graph(repoPath: repoPath))
+        } label: {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.blue)
+                Text("Commit History")
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

@@ -11,7 +11,7 @@ export default function SettingsPage() {
   
   const [systemInfo, setSystemInfo] = useState(null);
   const [networkInfo, setNetworkInfo] = useState([]);
-  const [cursorStatus, setCursorStatus] = useState(null);
+  const [toolsStatus, setToolsStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -22,15 +22,21 @@ export default function SettingsPage() {
     try {
       setIsLoading(true);
       
-      const [sysRes, netRes, cursorRes] = await Promise.all([
+      const [sysRes, netRes] = await Promise.all([
         apiRequest('/api/system/info'),
-        apiRequest('/api/system/network'),
-        apiRequest('/api/system/cursor-status')
+        apiRequest('/api/system/network')
       ]);
       
       setSystemInfo(await sysRes.json());
       setNetworkInfo((await netRes.json()).addresses || []);
-      setCursorStatus(await cursorRes.json());
+      
+      // Load tools status separately (non-critical)
+      try {
+        const toolsRes = await apiRequest('/api/system/tools-status');
+        setToolsStatus(await toolsRes.json());
+      } catch (err) {
+        console.error('Failed to load tools status:', err);
+      }
     } catch (err) {
       console.error('Failed to load system info:', err);
     } finally {
@@ -111,24 +117,22 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Cursor IDE</h2>
-        <div className={styles.card}>
-          <div className={styles.statusRow}>
-            <span className={styles.label}>Status</span>
-            <span className={`${styles.status} ${cursorStatus?.isRunning ? styles.connected : styles.disconnected}`}>
-              <span className={styles.statusDot} />
-              {cursorStatus?.isRunning ? 'Running' : 'Not Running'}
-            </span>
+      {toolsStatus && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>AI CLI Tools</h2>
+          <div className={styles.card}>
+            {Object.entries(toolsStatus.tools || {}).map(([toolId, info]) => (
+              <div key={toolId} className={styles.statusRow}>
+                <span className={styles.label}>{info.displayName || toolId}</span>
+                <span className={`${styles.status} ${info.available ? styles.connected : styles.disconnected}`}>
+                  <span className={styles.statusDot} />
+                  {info.available ? 'Installed' : 'Not Found'}
+                </span>
+              </div>
+            ))}
           </div>
-          {cursorStatus?.version && (
-            <div className={styles.infoRow}>
-              <span className={styles.label}>Version</span>
-              <span className={styles.value}>{cursorStatus.version}</span>
-            </div>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>System</h2>
@@ -196,7 +200,7 @@ export default function SettingsPage() {
 
       <footer className={styles.footer}>
         <p>Napp Trapp v1.0.0</p>
-        <p>Control your Cursor IDE remotely</p>
+        <p>Your standalone mobile IDE</p>
       </footer>
     </div>
   );

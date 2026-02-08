@@ -1,7 +1,7 @@
 {
   "name": "napp-trapp-client",
   "version": "1.0.0",
-  "description": "Mobile web app for controlling Cursor IDE remotely",
+  "description": "Standalone mobile IDE web client",
   "type": "module",
   "scripts": {
     "dev": "vite",

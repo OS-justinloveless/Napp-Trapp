@@ -1,7 +1,7 @@
 {
   "name": "napptrapp",
   "version": "1.0.0",
-  "description": "Control Cursor IDE from your mobile phone - local server with QR code connection",
+  "description": "Standalone mobile IDE - manage projects, edit files, and run AI coding tools from your phone",
   "main": "src/index.js",
   "type": "module",
   "bin": {
@@ -21,13 +21,13 @@
     ".env.example"
   ],
   "keywords": [
-    "cursor",
     "ide",
     "mobile",
-    "remote",
-    "control",
-    "qr-code",
-    "development"
+    "development",
+    "coding",
+    "terminal",
+    "ai",
+    "qr-code"
   ],
   "author": "",
   "license": "MIT",

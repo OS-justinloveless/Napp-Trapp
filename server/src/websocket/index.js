@@ -2,100 +2,18 @@ import chokidar from 'chokidar';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { terminalManager, ptyManager, tmuxManager } from '../routes/terminals.js';
+import { ptyManager, tmuxManager } from '../routes/terminals.js';
 import { LogManager } from '../utils/LogManager.js';
+import { chatProcessManager } from '../utils/ChatProcessManager.js';
 
 const logger = LogManager.getInstance();
 const tmuxSubscribers = new Map(); // "sessionName:windowIndex" -> Set of clientIds
 
 const clients = new Map();
 const watchers = new Map();
-const dbWatchers = new Map();
-const cursorTerminalWatchers = new Map(); // terminalId -> { watcher, filePath, subscribers, lastContent }
 const ptySubscribers = new Map(); // terminalId -> Set of clientIds
 
-/**
- * Get Cursor database paths
- */
-function getCursorDbPaths() {
-  const homeDir = os.homedir();
-  const paths = [];
-  
-  switch (process.platform) {
-    case 'darwin':
-      paths.push(
-        path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
-        path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'workspaceStorage')
-      );
-      break;
-    case 'win32':
-      paths.push(
-        path.join(homeDir, 'AppData', 'Roaming', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
-        path.join(homeDir, 'AppData', 'Roaming', 'Cursor', 'User', 'workspaceStorage')
-      );
-      break;
-    case 'linux':
-      if (process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY) {
-        paths.push(
-          path.join(homeDir, '.cursor-server', 'data', 'User', 'globalStorage', 'state.vscdb'),
-          path.join(homeDir, '.cursor-server', 'data', 'User', 'workspaceStorage')
-        );
-      } else {
-        paths.push(
-          path.join(homeDir, '.config', 'Cursor', 'User', 'globalStorage', 'state.vscdb'),
-          path.join(homeDir, '.config', 'Cursor', 'User', 'workspaceStorage')
-        );
-      }
-      break;
-  }
-  
-  return paths;
-}
-
-/**
- * Setup database watchers for Cursor chat updates
- */
-function setupDatabaseWatchers() {
-  const dbPaths = getCursorDbPaths();
-  
-  for (const dbPath of dbPaths) {
-    if (!fs.existsSync(dbPath)) {
-      console.log(`Database path does not exist, skipping: ${dbPath}`);
-      continue;
-    }
-    
-    console.log(`Setting up database watcher for: ${dbPath}`);
-    
-    const watcher = chokidar.watch(dbPath, {
-      persistent: true,
-      ignoreInitial: true,
-      depth: dbPath.endsWith('workspaceStorage') ? 2 : 0,
-      awaitWriteFinish: {
-        stabilityThreshold: 100,
-        pollInterval: 50
-      }
-    });
-    
-    watcher.on('change', (filePath) => {
-      broadcast({
-        type: 'chatUpdate',
-        message: 'Chat database updated',
-        path: filePath,
-        timestamp: Date.now()
-      });
-    });
-    
-    watcher.on('error', (error) => {
-      console.error(`Database watcher error for ${dbPath}:`, error);
-    });
-    
-    dbWatchers.set(dbPath, watcher);
-  }
-}
-
 export function setupWebSocket(wss, authManager) {
-  setupDatabaseWatchers();
-  
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
     let authenticated = false;
@@ -177,7 +95,28 @@ export function setupWebSocket(wss, authManager) {
           case 'ping':
             ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
             break;
-            
+
+          // Chat session handlers (chat windows are tmux windows running AI CLIs)
+          case 'chatAttach':
+            handleChatAttach(clientId, ws, message);
+            break;
+
+          case 'chatDetach':
+            handleChatDetach(clientId, message);
+            break;
+
+          case 'chatMessage':
+            handleChatMessage(clientId, ws, message);
+            break;
+
+          case 'chatCancel':
+            handleChatCancel(clientId, ws, message);
+            break;
+
+          case 'chatApproval':
+            handleChatApproval(clientId, ws, message);
+            break;
+
           default:
             ws.send(JSON.stringify({
               type: 'error',
@@ -262,17 +201,6 @@ export function setupWebSocket(wss, authManager) {
             if (handler) {
               tmuxManager.removeOutputHandler(clientSessionName, windowIndex, handler);
             }
-          }
-        }
-        
-        // Cursor IDE terminals
-        const cursorWatcher = cursorTerminalWatchers.get(terminalId);
-        if (cursorWatcher) {
-          cursorWatcher.subscribers.delete(clientId);
-          if (cursorWatcher.subscribers.size === 0) {
-            cursorWatcher.watcher.close();
-            cursorTerminalWatchers.delete(terminalId);
-            console.log(`Closed file watcher for Cursor terminal: ${terminalId}`);
           }
         }
       }
@@ -384,34 +312,23 @@ export function broadcast(message) {
 }
 
 // Cleanup on shutdown
-export function cleanup() {
-  for (const [, watcher] of dbWatchers) {
-    watcher.close();
-  }
-  dbWatchers.clear();
-  
+export async function cleanup() {
   for (const [, watcherInfo] of watchers) {
     watcherInfo.watcher.close();
   }
   watchers.clear();
-  
-  for (const [terminalId, watcherInfo] of cursorTerminalWatchers) {
-    watcherInfo.watcher.close();
-    console.log(`Closed file watcher for Cursor terminal: ${terminalId}`);
-  }
-  cursorTerminalWatchers.clear();
-  
+
   // Clean up PTY terminals
   ptyManager.cleanup();
   ptySubscribers.clear();
-  
+
   // Clean up tmux attached windows (but don't kill tmux sessions - they persist)
   tmuxManager.cleanup();
   tmuxSubscribers.clear();
-  
-  if (terminalManager) {
-    terminalManager.clearTTYCache();
-  }
+
+  // Clean up chat processes
+  await chatProcessManager.cleanup();
+  chatSubscribers.clear();
 }
 
 // ============ Terminal Handlers ============
@@ -474,9 +391,6 @@ function handleTerminalCreate(clientId, ws, message) {
       terminal
     }));
     
-    // Note: Don't auto-attach here - the iOS client will call terminalAttach
-    // when navigating to the terminal view. This prevents duplicate handlers.
-    
   } catch (error) {
     console.error(`[WS] Failed to create terminal:`, error);
     ws.send(JSON.stringify({
@@ -487,7 +401,7 @@ function handleTerminalCreate(clientId, ws, message) {
 }
 
 /**
- * Attach to a terminal (PTY, tmux, or Cursor IDE)
+ * Attach to a terminal (PTY or tmux)
  */
 function handleTerminalAttach(clientId, ws, message) {
   const { terminalId, projectPath } = message;
@@ -512,16 +426,10 @@ function handleTerminalAttach(clientId, ws, message) {
     return;
   }
   
-  // Handle Cursor IDE terminals
-  if (terminalManager.isCursorIDETerminal(terminalId)) {
-    handleCursorTerminalAttach(clientId, ws, terminalId, projectPath);
-    return;
-  }
-  
   ws.send(JSON.stringify({
     type: 'terminalError',
     terminalId,
-    message: 'Invalid terminal ID format. Use pty-N for PTY, tmux-{sessionName} for tmux, or cursor-N for Cursor IDE terminals.'
+    message: 'Invalid terminal ID format. Use pty-N for PTY or tmux-{sessionName}:{windowIndex} for tmux terminals.'
   }));
 }
 
@@ -596,8 +504,6 @@ function handlePTYTerminalAttach(clientId, ws, terminalId) {
   // Send buffered output (terminal history) so user sees previous content
   const bufferedOutput = ptyManager.getBuffer(terminalId);
   if (bufferedOutput) {
-    // Send clear screen + home cursor first, then the buffered content
-    // This ensures no duplicate content if the client had partial state
     const clearAndBuffer = '\x1b[2J\x1b[H' + bufferedOutput;
     ws.send(JSON.stringify({
       type: 'terminalData',
@@ -670,21 +576,19 @@ function handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath) {
   
   // Check if already attached - remove old handler first
   if (client.outputHandlers.has(terminalId)) {
-    console.log(`[WS] Client ${clientId} already attached to tmux ${windowKey}, removing old handler`);
+    console.log(`[WS] Client ${clientId} already attached to tmux terminal, removing old handler`);
     const oldHandler = client.outputHandlers.get(terminalId);
     tmuxManager.removeOutputHandler(sessionName, windowIndex, oldHandler);
     client.outputHandlers.delete(terminalId);
   }
   
   // Attach to the tmux window with client-specific grouped session
-  // This allows each client (mobile, desktop) to have an independent view
-  // while sharing the same windows
   let attachResult;
   try {
     attachResult = tmuxManager.attachToWindow(sessionName, windowIndex, { 
       cols: 80, 
       rows: 24,
-      clientId  // Creates a grouped session for this client
+      clientId
     });
     console.log(`[WS] Client ${clientId} attached to tmux window with independent view`);
   } catch (error) {
@@ -696,7 +600,7 @@ function handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath) {
     return;
   }
   
-  // Use client session for tracking (allows independent cleanup)
+  // Use client session for tracking
   const clientSessionName = attachResult.clientSessionName || sessionName;
   const windowKey = tmuxManager.getWindowKey(clientSessionName, windowIndex);
   
@@ -721,9 +625,9 @@ function handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath) {
     }
   };
   
-  // Store handler reference for cleanup (include client session name for proper cleanup)
+  // Store handler reference for cleanup
   client.outputHandlers.set(terminalId, outputHandler);
-  client.clientSessionName = clientSessionName; // Store for cleanup
+  client.clientSessionName = clientSessionName;
   
   tmuxManager.addOutputHandler(clientSessionName, windowIndex, outputHandler);
   
@@ -758,139 +662,6 @@ function handleTmuxTerminalAttach(clientId, ws, terminalId, projectPath) {
 }
 
 /**
- * Format Cursor IDE terminal content for clean display
- * The file content is "rendered" text without ANSI sequences,
- * so we need to format it properly for terminal display
- */
-function formatCursorTerminalContent(content) {
-  // Clear screen + home cursor + reset attributes
-  let formatted = '\x1b[2J\x1b[H\x1b[0m';
-  
-  // Split into lines and process each
-  const lines = content.split('\n');
-  
-  for (const line of lines) {
-    // Output the line with carriage return + newline for proper terminal display
-    formatted += line + '\r\n';
-  }
-  
-  return formatted;
-}
-
-/**
- * Attach to a Cursor IDE terminal (file-based)
- */
-function handleCursorTerminalAttach(clientId, ws, terminalId, projectPath) {
-  if (!projectPath) {
-    ws.send(JSON.stringify({
-      type: 'terminalError',
-      terminalId,
-      message: 'projectPath is required for Cursor IDE terminals'
-    }));
-    return;
-  }
-  
-  const terminalData = terminalManager.readCursorTerminalContent(terminalId, projectPath);
-  
-  if (!terminalData) {
-    ws.send(JSON.stringify({
-      type: 'terminalError',
-      terminalId,
-      message: 'Terminal not found or not active'
-    }));
-    return;
-  }
-  
-  const { content, metadata, filePath } = terminalData;
-  
-  if (!cursorTerminalWatchers.has(terminalId)) {
-    console.log(`Setting up file watcher for Cursor terminal: ${terminalId} at ${filePath}`);
-    
-    const watcher = chokidar.watch(filePath, {
-      persistent: true,
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 100,
-        pollInterval: 50
-      }
-    });
-    
-    watcher.on('change', () => {
-      const watcherInfo = cursorTerminalWatchers.get(terminalId);
-      if (!watcherInfo) return;
-      
-      const newData = terminalManager.readCursorTerminalContent(terminalId, projectPath);
-      if (!newData) return;
-      
-      const newContent = newData.content;
-      const lastContent = watcherInfo.lastContent || '';
-      
-      // For Cursor IDE terminals, always send the full formatted content
-      // since we don't have proper ANSI sequences for incremental updates
-      let formattedData = '';
-      if (newContent.length > lastContent.length && newContent.startsWith(lastContent)) {
-        // Append-only change - just send the new lines with proper formatting
-        const newPart = newContent.substring(lastContent.length);
-        const lines = newPart.split('\n');
-        formattedData = lines.join('\r\n');
-      } else {
-        // Content changed in a different way - send full formatted content
-        formattedData = formatCursorTerminalContent(newContent);
-      }
-      
-      watcherInfo.lastContent = newContent;
-      
-      const message = JSON.stringify({
-        type: 'terminalData',
-        terminalId,
-        data: formattedData
-      });
-      
-      for (const cid of watcherInfo.subscribers) {
-        const client = clients.get(cid);
-        if (client && client.ws.readyState === 1) {
-          client.ws.send(message);
-        }
-      }
-    });
-    
-    watcher.on('error', (error) => {
-      console.error(`Cursor terminal watcher error for ${terminalId}:`, error);
-    });
-    
-    cursorTerminalWatchers.set(terminalId, {
-      watcher,
-      filePath,
-      projectPath,
-      subscribers: new Set(),
-      lastContent: content
-    });
-  }
-  
-  cursorTerminalWatchers.get(terminalId).subscribers.add(clientId);
-  
-  const client = clients.get(clientId);
-  if (client) {
-    client.subscribedTerminals.add(terminalId);
-  }
-  
-  ws.send(JSON.stringify({
-    type: 'terminalAttached',
-    terminalId,
-    message: 'Attached to Cursor IDE terminal (read-only output, limited input)',
-    readOnly: true,
-    metadata
-  }));
-  
-  // Send formatted content for proper display
-  ws.send(JSON.stringify({
-    type: 'terminalData',
-    terminalId,
-    data: formatCursorTerminalContent(content)
-  }));
-}
-
-/**
  * Detach from a terminal
  */
 function handleTerminalDetach(clientId, message) {
@@ -921,7 +692,6 @@ function handleTerminalDetach(clientId, message) {
   if (tmuxManager.isTmuxTerminal(terminalId)) {
     const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
     
-    // Get the client session name for this client
     const clientSessionName = client?.clientSessionName || tmuxManager.generateClientSessionName(sessionName, clientId);
     const windowKey = tmuxManager.getWindowKey(clientSessionName, windowIndex);
     
@@ -929,13 +699,11 @@ function handleTerminalDetach(clientId, message) {
     if (subscribers) {
       subscribers.delete(clientId);
       
-      // If no more subscribers, detach from tmux client session
       if (subscribers.size === 0) {
         tmuxManager.detachFromWindow(clientSessionName, windowIndex);
         tmuxSubscribers.delete(windowKey);
         console.log(`Detached from tmux client session ${windowKey} (no subscribers)`);
         
-        // Clean up the client session (base session and windows remain)
         try {
           if (tmuxManager.sessionExists(clientSessionName)) {
             tmuxManager.destroySession(clientSessionName);
@@ -954,18 +722,6 @@ function handleTerminalDetach(clientId, message) {
         tmuxManager.removeOutputHandler(clientSessionName, windowIndex, handler);
         client.outputHandlers.delete(terminalId);
       }
-    }
-  }
-  
-  // Handle Cursor IDE terminal
-  const cursorWatcher = cursorTerminalWatchers.get(terminalId);
-  if (cursorWatcher) {
-    cursorWatcher.subscribers.delete(clientId);
-    
-    if (cursorWatcher.subscribers.size === 0) {
-      cursorWatcher.watcher.close();
-      cursorTerminalWatchers.delete(terminalId);
-      console.log(`Closed file watcher for Cursor terminal: ${terminalId}`);
     }
   }
   
@@ -988,7 +744,7 @@ function handleTerminalInput(clientId, ws, message) {
     return;
   }
   
-  // Handle PTY terminals - full bidirectional support
+  // Handle PTY terminals
   if (ptyManager.isPTYTerminal(terminalId)) {
     try {
       ptyManager.writeToTerminal(terminalId, data);
@@ -1002,13 +758,12 @@ function handleTerminalInput(clientId, ws, message) {
     return;
   }
   
-  // Handle tmux terminals - full bidirectional support
+  // Handle tmux terminals
   if (tmuxManager.isTmuxTerminal(terminalId)) {
     try {
       const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
       const client = clients.get(clientId);
       
-      // Use the client session name if available (for grouped session support)
       const clientSessionName = client?.clientSessionName || tmuxManager.generateClientSessionName(sessionName, clientId);
       
       if (!tmuxManager.isAttached(clientSessionName, windowIndex)) {
@@ -1019,7 +774,6 @@ function handleTerminalInput(clientId, ws, message) {
         }));
         return;
       }
-      // Write to the client session - the input goes to the shared window
       tmuxManager.writeToWindow(clientSessionName, windowIndex, data);
     } catch (error) {
       ws.send(JSON.stringify({
@@ -1028,16 +782,6 @@ function handleTerminalInput(clientId, ws, message) {
         message: error.message
       }));
     }
-    return;
-  }
-  
-  // Handle Cursor IDE terminals - limited support
-  if (terminalManager.isCursorIDETerminal(terminalId)) {
-    ws.send(JSON.stringify({
-      type: 'terminalError',
-      terminalId,
-      message: 'Input to Cursor IDE terminals is not supported due to macOS security restrictions. Use PTY or tmux terminals for full input support.'
-    }));
     return;
   }
   
@@ -1095,8 +839,6 @@ function handleTerminalResize(clientId, ws, message) {
     }
     return;
   }
-  
-  // Cursor IDE terminals don't support resize via API - silently ignore
 }
 
 /**
@@ -1116,7 +858,6 @@ function handleTerminalKill(clientId, ws, message) {
   // Handle PTY terminals
   if (ptyManager.isPTYTerminal(terminalId)) {
     try {
-      // Notify all subscribers that terminal is closing
       const subscribers = ptySubscribers.get(terminalId);
       if (subscribers) {
         for (const cid of subscribers) {
@@ -1153,7 +894,6 @@ function handleTerminalKill(clientId, ws, message) {
       const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
       const windowKey = tmuxManager.getWindowKey(sessionName, windowIndex);
       
-      // Notify all subscribers that terminal is closing
       const subscribers = tmuxSubscribers.get(windowKey);
       if (subscribers) {
         for (const cid of subscribers) {
@@ -1168,7 +908,6 @@ function handleTerminalKill(clientId, ws, message) {
         tmuxSubscribers.delete(windowKey);
       }
       
-      // Kill just the window, not the entire session
       tmuxManager.killWindow(sessionName, windowIndex);
       
       ws.send(JSON.stringify({
@@ -1184,10 +923,270 @@ function handleTerminalKill(clientId, ws, message) {
     }
     return;
   }
-  
+
   ws.send(JSON.stringify({
     type: 'terminalError',
     terminalId,
-    message: 'Cannot kill Cursor IDE terminals from here'
+    message: 'Invalid terminal ID format'
   }));
+}
+
+// ============ Chat Session Handlers ============
+// Chat processes use ChatProcessManager with JSON output for structured data
+// This provides clean content blocks instead of raw terminal ANSI codes
+
+const chatSubscribers = new Map(); // conversationId -> Set of clientIds
+
+/**
+ * Attach to a chat session
+ */
+async function handleChatAttach(clientId, ws, message) {
+  console.log(`[WS] handleChatAttach called for client ${clientId}:`, JSON.stringify(message));
+  const { conversationId, workspaceId } = message;
+
+  if (!conversationId) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      message: 'conversationId is required'
+    }));
+    return;
+  }
+
+  // Check if chat exists
+  if (!chatProcessManager.hasChat(conversationId)) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: 'Chat not found'
+    }));
+    return;
+  }
+
+  const client = clients.get(clientId);
+  if (!client) {
+    return;
+  }
+
+  // Initialize handlers map if needed
+  if (!client.chatHandlers) {
+    client.chatHandlers = new Map();
+  }
+
+  // Check if already attached - remove old handler first
+  if (client.chatHandlers.has(conversationId)) {
+    console.log(`[WS] Client ${clientId} already attached to chat ${conversationId}, removing old handler`);
+    const oldHandler = client.chatHandlers.get(conversationId);
+    chatProcessManager.removeOutputHandler(conversationId, oldHandler);
+    client.chatHandlers.delete(conversationId);
+  }
+
+  try {
+    // Attach to the chat process
+    const attachResult = await chatProcessManager.attachChat(conversationId, clientId);
+    console.log(`[WS] Client ${clientId} attached to chat session ${conversationId}`);
+
+    // Track subscribers
+    if (!chatSubscribers.has(conversationId)) {
+      chatSubscribers.set(conversationId, new Set());
+    }
+    chatSubscribers.get(conversationId).add(clientId);
+
+    // Track for client cleanup
+    client.subscribedTerminals.add(conversationId);
+
+    // Set up output handler - forwards structured events to client
+    const outputHandler = (event) => {
+      const c = clients.get(clientId);
+      if (c && c.ws.readyState === 1) {
+        // Send structured event directly
+        c.ws.send(JSON.stringify({
+          type: 'chatEvent',
+          conversationId,
+          event
+        }));
+      }
+    };
+
+    // Store handler reference for cleanup
+    client.chatHandlers.set(conversationId, outputHandler);
+    chatProcessManager.addOutputHandler(conversationId, outputHandler);
+
+    const chatInfo = chatProcessManager.getChat(conversationId);
+
+    // Send attachment confirmation
+    ws.send(JSON.stringify({
+      type: 'chatAttached',
+      conversationId,
+      tool: chatInfo?.tool || 'unknown',
+      workspacePath: workspaceId,
+      status: attachResult.status,
+      message: 'Attached to chat session'
+    }));
+
+    // Send buffered messages (conversation history)
+    const bufferedMessages = attachResult.bufferedMessages || [];
+    if (bufferedMessages.length > 0) {
+      ws.send(JSON.stringify({
+        type: 'chatHistory',
+        conversationId,
+        messages: bufferedMessages
+      }));
+      console.log(`[WS] Sent ${bufferedMessages.length} buffered messages to client ${clientId}`);
+    }
+
+    console.log(`Client ${clientId} attached to chat ${conversationId} (tool: ${chatInfo?.tool})`);
+  } catch (error) {
+    console.error(`[WS] Failed to attach to chat ${conversationId}:`, error);
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: `Failed to attach to chat: ${error.message}`
+    }));
+  }
+}
+
+/**
+ * Detach from a chat session
+ */
+function handleChatDetach(clientId, message) {
+  const { conversationId } = message;
+
+  if (!conversationId) return;
+
+  const client = clients.get(clientId);
+
+  const subscribers = chatSubscribers.get(conversationId);
+  if (subscribers) {
+    subscribers.delete(clientId);
+    if (subscribers.size === 0) {
+      chatSubscribers.delete(conversationId);
+    }
+  }
+
+  // Remove output handler
+  if (client && client.chatHandlers) {
+    const handler = client.chatHandlers.get(conversationId);
+    if (handler) {
+      chatProcessManager.removeOutputHandler(conversationId, handler);
+      client.chatHandlers.delete(conversationId);
+    }
+  }
+
+  if (client) {
+    client.subscribedTerminals.delete(conversationId);
+  }
+
+  console.log(`Client ${clientId} detached from chat ${conversationId}`);
+}
+
+/**
+ * Send a message to a chat session
+ */
+async function handleChatMessage(clientId, ws, message) {
+  console.log(`[WS] handleChatMessage called for client ${clientId}:`, JSON.stringify(message));
+  const { conversationId, content, mode } = message;
+
+  if (!conversationId || content === undefined) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: 'conversationId and content are required'
+    }));
+    return;
+  }
+
+  if (!chatProcessManager.hasChat(conversationId)) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: 'Chat not found'
+    }));
+    return;
+  }
+
+  try {
+    // Check if mode has changed and handle mode switching
+    if (mode && chatProcessManager.needsModeSwitch(conversationId, mode)) {
+      console.log(`[WS] Mode switch requested for ${conversationId}: ${mode}`);
+      await chatProcessManager.switchMode(conversationId, mode);
+    }
+
+    const result = await chatProcessManager.sendMessage(conversationId, content);
+
+    // Confirm message was sent
+    ws.send(JSON.stringify({
+      type: 'chatMessageSent',
+      conversationId,
+      messageId: result.messageId
+    }));
+
+    console.log(`[WS] Sent message to chat ${conversationId}: ${content.substring(0, 50)}...`);
+  } catch (error) {
+    console.error(`[WS] Failed to send message to chat ${conversationId}:`, error);
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: error.message
+    }));
+  }
+}
+
+/**
+ * Send approval response to a chat session
+ */
+async function handleChatApproval(clientId, ws, message) {
+  const { conversationId, approved, blockId } = message;
+
+  if (!conversationId || approved === undefined) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      message: 'conversationId and approved are required'
+    }));
+    return;
+  }
+
+  try {
+    // Pass blockId (the tool_use_id) so sendApproval can find the specific denied tool
+    await chatProcessManager.sendApproval(conversationId, approved, blockId);
+    console.log(`[WS] Sent approval (${approved}) for block ${blockId} to chat ${conversationId}`);
+  } catch (error) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: error.message
+    }));
+  }
+}
+
+/**
+ * Cancel/interrupt a chat session
+ */
+async function handleChatCancel(clientId, ws, message) {
+  const { conversationId } = message;
+
+  if (!conversationId) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      message: 'conversationId is required'
+    }));
+    return;
+  }
+
+  try {
+    await chatProcessManager.cancelChat(conversationId);
+
+    ws.send(JSON.stringify({
+      type: 'chatCancelled',
+      conversationId,
+      message: 'Chat interrupted'
+    }));
+
+    console.log(`[WS] Cancelled chat ${conversationId}`);
+  } catch (error) {
+    ws.send(JSON.stringify({
+      type: 'chatError',
+      conversationId,
+      message: error.message
+    }));
+  }
 }

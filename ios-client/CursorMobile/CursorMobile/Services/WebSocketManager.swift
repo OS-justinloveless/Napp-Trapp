@@ -277,7 +277,48 @@ class WebSocketManager: ObservableObject {
             case "chatData":
                 if let conversationId = json["conversationId"] as? String,
                    let data = json["data"] as? String {
-                    chatRawDataHandlers[conversationId]?(data)
+                    print("WebSocket: Received chatData for \(conversationId): \(data.count) chars")
+                    if let handler = chatRawDataHandlers[conversationId] {
+                        handler(data)
+                    } else {
+                        print("WebSocket: No handler registered for chatData \(conversationId)")
+                    }
+                }
+
+            case "chatEvent":
+                // New structured event from ChatProcessManager
+                if let conversationId = json["conversationId"] as? String,
+                   let eventData = json["event"] as? [String: Any] {
+                    print("WebSocket: Received chatEvent for \(conversationId): \(eventData["type"] ?? "unknown")")
+                    // Parse the event into a ChatContentBlock
+                    do {
+                        let jsonData = try JSONSerialization.data(withJSONObject: eventData)
+                        let block = try JSONDecoder().decode(ChatContentBlock.self, from: jsonData)
+                        chatContentBlockHandlers[conversationId]?([block])
+                    } catch {
+                        print("WebSocket: Failed to parse chatEvent - \(error)")
+                        // If parsing as block fails, try sending as raw content
+                        if let content = eventData["content"] as? String {
+                            chatRawDataHandlers[conversationId]?(content)
+                        }
+                    }
+                }
+
+            case "chatHistory":
+                // Buffered messages sent on reconnect
+                if let conversationId = json["conversationId"] as? String,
+                   let messagesData = json["messages"] as? [[String: Any]] {
+                    print("WebSocket: Received chatHistory for \(conversationId): \(messagesData.count) messages")
+                    // Parse and send each message as content blocks
+                    for messageData in messagesData {
+                        do {
+                            let jsonData = try JSONSerialization.data(withJSONObject: messageData)
+                            let block = try JSONDecoder().decode(ChatContentBlock.self, from: jsonData)
+                            chatContentBlockHandlers[conversationId]?([block])
+                        } catch {
+                            print("WebSocket: Failed to parse history message - \(error)")
+                        }
+                    }
                 }
                 
             case "chatMessageSent":
@@ -492,6 +533,7 @@ class WebSocketManager: ObservableObject {
         if let workspaceId = workspaceId {
             message["workspaceId"] = workspaceId
         }
+        print("WebSocket: Sending chatAttach message: \(message)")
         send(message)
         print("WebSocket: Attaching to chat \(conversationId)")
     }
@@ -511,7 +553,7 @@ class WebSocketManager: ObservableObject {
     }
     
     /// Send a message to a chat conversation
-    func sendChatMessage(_ conversationId: String, content: String, workspaceId: String? = nil) {
+    func sendChatMessage(_ conversationId: String, content: String, workspaceId: String? = nil, mode: String? = nil) {
         var message: [String: Any] = [
             "type": "chatMessage",
             "conversationId": conversationId,
@@ -520,8 +562,12 @@ class WebSocketManager: ObservableObject {
         if let workspaceId = workspaceId {
             message["workspaceId"] = workspaceId
         }
+        if let mode = mode {
+            message["mode"] = mode
+        }
+        print("WebSocket: Sending chatMessage: \(message)")
         send(message)
-        print("WebSocket: Sending chat message to \(conversationId)")
+        print("WebSocket: Sent chat message to \(conversationId)")
     }
     
     /// Cancel/interrupt a chat session (sends Ctrl+C)
@@ -535,9 +581,16 @@ class WebSocketManager: ObservableObject {
     
     /// Send approval response to a chat session
     func sendChatApproval(_ conversationId: String, blockId: String, approved: Bool) {
-        // For now, send as input 'y' or 'n' since CLIs typically expect this
-        let response = approved ? "y" : "n"
-        sendChatInput(conversationId, input: response)
+        // Send as proper chatApproval message type so the server routes it through
+        // handleChatApproval -> ChatProcessManager.sendApproval() which writes the
+        // correct JSON permission response to the CLI stdin.
+        send([
+            "type": "chatApproval",
+            "conversationId": conversationId,
+            "blockId": blockId,
+            "approved": approved
+        ])
+        print("WebSocket: Sending chatApproval (\(approved)) for block \(blockId) in \(conversationId)")
     }
     
     /// Send raw input to a chat session

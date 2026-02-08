@@ -1,7 +1,7 @@
 {
   "name": "Napp Trapp",
   "short_name": "Napp Trapp",
-  "description": "Control Cursor IDE from your mobile device",
+  "description": "Standalone mobile IDE for coding on the go",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e1e1e",

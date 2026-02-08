@@ -13,6 +13,7 @@ import { setupRoutes } from './routes/index.js';
 import { setupWebSocket } from './websocket/index.js';
 import { AuthManager } from './auth/AuthManager.js';
 import { LogManager } from './utils/LogManager.js';
+import { chatProcessManager } from './utils/ChatProcessManager.js';
 
 config();
 
@@ -236,20 +237,27 @@ async function displayStartupMessage() {
   console.log('\n');
 }
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
   logger.info('Server', 'Server started successfully', {
     port: PORT,
     ip: LOCAL_IP,
     url: `http://${LOCAL_IP}:${PORT}`
   });
+
+  // Load persisted conversations
+  await chatProcessManager.loadPersistedConversations().catch(err => {
+    logger.error('Server', 'Failed to load persisted conversations', { error: err.message });
+  });
+
   displayStartupMessage();
 });
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('Server', 'Shutting down server...');
   console.log('\nShutting down server...');
   authManager.shutdown();  // Save auth state before exit
+  await chatProcessManager.cleanup();  // Clean up chat processes (now async)
   server.close(() => {
     logger.info('Server', 'Server closed');
     console.log('Server closed');

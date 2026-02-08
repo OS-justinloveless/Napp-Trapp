@@ -2,16 +2,16 @@ import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
 import { tmuxManager } from '../utils/TmuxManager.js';
 
 const router = Router();
-const cursorWorkspace = new CursorWorkspace();
+const projectManager = new ProjectManager();
 
-// Get list of recent Cursor projects
+// Get list of projects
 router.get('/', async (req, res) => {
   try {
-    const projects = await cursorWorkspace.getRecentProjects();
+    const projects = await projectManager.getRecentProjects();
     res.json({ projects });
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
 router.get('/:projectId', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -39,7 +39,7 @@ router.get('/:projectId/tree', async (req, res) => {
   try {
     const { projectId } = req.params;
     const { depth = 3 } = req.query;
-    const tree = await cursorWorkspace.getProjectTree(projectId, parseInt(depth));
+    const tree = await projectManager.getProjectTree(projectId, parseInt(depth));
     res.json({ tree });
   } catch (error) {
     console.error('Error fetching project tree:', error);
@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
     
     // Initialize with template if specified
     if (template) {
-      await cursorWorkspace.initializeTemplate(fullPath, template);
+      await projectManager.initializeTemplate(fullPath, template);
     }
     
     // Create basic project structure
@@ -149,16 +149,16 @@ Thumbs.db
     
     const createdAt = new Date().toISOString();
     
-    // Save to created projects list so it shows up in the projects drawer
-    await cursorWorkspace.saveCreatedProject({
+    // Register the project so it shows up in the project list
+    await projectManager.registerProject({
       name,
       path: fullPath,
-      createdAt
+      lastOpened: createdAt
     });
     
     // Clear cache so the new project shows up immediately
-    cursorWorkspace.recentProjectsCache = null;
-    cursorWorkspace.cacheTimestamp = null;
+    projectManager.recentProjectsCache = null;
+    projectManager.cacheTimestamp = null;
     
     res.json({ 
       success: true, 
@@ -205,16 +205,16 @@ router.post('/open-folder', async (req, res) => {
     const projectName = path.basename(resolvedPath);
     const projectId = Buffer.from(resolvedPath).toString('base64');
     
-    // Save it so it shows up in the project list
-    await cursorWorkspace.saveCreatedProject({
+    // Register the project
+    await projectManager.registerProject({
       name: projectName,
       path: resolvedPath,
-      createdAt: new Date().toISOString()
+      lastOpened: new Date().toISOString()
     });
     
     // Clear cache so the project shows up immediately
-    cursorWorkspace.recentProjectsCache = null;
-    cursorWorkspace.cacheTimestamp = null;
+    projectManager.recentProjectsCache = null;
+    projectManager.cacheTimestamp = null;
     
     const project = {
       id: projectId,
@@ -230,24 +230,35 @@ router.post('/open-folder', async (req, res) => {
   }
 });
 
-// Open project in Cursor
-router.post('/:projectId/open', async (req, res) => {
+// Remove a project from the list (doesn't delete files)
+router.delete('/:projectId', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const result = await cursorWorkspace.openInCursor(projectId);
-    res.json({ success: true, ...result });
+    const project = await projectManager.getProjectDetails(projectId);
+    
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    await projectManager.unregisterProject(project.path);
+    
+    // Clear cache
+    projectManager.recentProjectsCache = null;
+    projectManager.cacheTimestamp = null;
+    
+    res.json({ success: true, message: 'Project removed from list' });
   } catch (error) {
-    console.error('Error opening project:', error);
-    res.status(500).json({ error: 'Failed to open project in Cursor' });
+    console.error('Error removing project:', error);
+    res.status(500).json({ error: 'Failed to remove project' });
   }
 });
 
 // Get chat windows for a specific project
-// Chats are now tmux windows with names starting with "chat-"
+// Chats are tmux windows with names starting with "chat-"
 router.get('/:projectId/conversations', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const project = await cursorWorkspace.getProjectDetails(projectId);
+    const project = await projectManager.getProjectDetails(projectId);
     
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
@@ -269,17 +280,16 @@ router.get('/:projectId/conversations', async (req, res) => {
       type: 'chat',
       source: 'tmux',
       active: w.active,
-      // For backwards compatibility
       title: `${w.tool}: ${w.topic}`,
       timestamp: Date.now(),
-      messageCount: 0, // Not applicable for tmux chats
+      messageCount: 0,
       isReadOnly: false,
       canFork: false
     }));
     
     res.json({ 
       conversations: chats,
-      chats, // Alias for new clients
+      chats,
       total: chats.length,
       projectName: project.name,
       projectPath: project.path

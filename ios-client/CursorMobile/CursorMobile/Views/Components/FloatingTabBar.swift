@@ -6,8 +6,8 @@ struct FloatingTabBar: View {
     
     private let tabs: [(icon: String, label: String)] = [
         ("folder.fill", "Files"),
-        ("terminal.fill", "Terminals"),
         ("arrow.triangle.branch", "Git"),
+        ("terminal.fill", "Terminals"),
         ("bubble.left.and.bubble.right.fill", "Chat")
     ]
     
@@ -64,30 +64,6 @@ private struct TabButton: View {
     }
 }
 
-/// Floating action button for creating new chat
-struct FloatingActionButton: View {
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "plus")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Color.white)
-                .frame(width: 64, height: 64)
-                .background(
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                        Circle()
-                            .fill(Color.accentColor.opacity(0.85))
-                    }
-                    .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 #Preview {
     ZStack {
         Color(.systemGroupedBackground)
@@ -96,12 +72,9 @@ struct FloatingActionButton: View {
         VStack {
             Spacer()
             
-            HStack(alignment: .center, spacing: 12) {
-                FloatingTabBar(selectedTab: .constant(0))
-                FloatingActionButton(action: {})
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 0)
+            FloatingTabBar(selectedTab: .constant(0))
+                .padding(.horizontal, 24)
+                .padding(.bottom, 0)
         }
     }
 }

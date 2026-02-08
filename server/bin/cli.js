@@ -30,7 +30,7 @@ function showHelp() {
   console.log(`
 Napp Trapp v${packageJson.version}
 
-Control Cursor IDE from your mobile phone.
+Standalone mobile IDE - manage projects, edit files, and run AI coding tools from your phone.
 
 Usage:
   npx napptrapp [options]

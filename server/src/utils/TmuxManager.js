@@ -783,6 +783,65 @@ export class TmuxManager {
   }
 
   /**
+   * Get scrollback history from a tmux window
+   * Uses tmux capture-pane to capture the scrollback buffer
+   *
+   * @param {string} sessionName - Session name
+   * @param {number} windowIndex - Window index
+   * @param {number} lines - Number of lines to capture (default: 2000)
+   * @returns {string} - The scrollback content
+   */
+  getWindowScrollback(sessionName, windowIndex, lines = 2000) {
+    if (!this.isTmuxAvailable()) {
+      throw new Error('tmux is not installed');
+    }
+
+    try {
+      // Use capture-pane with -p to print to stdout
+      // -S specifies how far back to start (negative = lines before current)
+      // -E specifies where to end (empty means current visible end)
+      const output = execSync(
+        `tmux capture-pane -t "${sessionName}:${windowIndex}" -p -S -${lines}`,
+        { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 } // 10MB buffer
+      );
+
+      return output;
+    } catch (e) {
+      const errorMsg = e.stderr?.toString() || e.message || '';
+      console.error(`[TmuxManager] Error capturing scrollback: ${errorMsg}`);
+      throw new Error(`Failed to capture scrollback: ${errorMsg}`);
+    }
+  }
+
+  /**
+   * Copy a window's scrollback to a new pane or save to file
+   * Useful for preserving history when forking chats
+   *
+   * @param {string} sessionName - Session name
+   * @param {number} windowIndex - Window index
+   * @param {string} outputPath - Path to save the scrollback (optional)
+   * @returns {object} - { content: string, lines: number, savedTo?: string }
+   */
+  captureWindowHistory(sessionName, windowIndex, outputPath = null) {
+    const content = this.getWindowScrollback(sessionName, windowIndex, 10000);
+    const lines = content.split('\n').length;
+
+    const result = { content, lines };
+
+    if (outputPath) {
+      try {
+        fs.writeFileSync(outputPath, content, 'utf-8');
+        result.savedTo = outputPath;
+        console.log(`[TmuxManager] Saved scrollback to ${outputPath} (${lines} lines)`);
+      } catch (e) {
+        console.error(`[TmuxManager] Failed to save scrollback: ${e.message}`);
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Rename a window
    * @param {string} sessionName - Session name
    * @param {number} windowIndex - Window index

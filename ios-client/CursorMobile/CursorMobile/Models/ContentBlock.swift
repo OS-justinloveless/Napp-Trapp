@@ -135,6 +135,68 @@ struct ChatContentBlock: Codable, Identifiable, Hashable {
         case inputTokens, outputTokens
         case isSuccess, isMode
     }
+
+    // MARK: - Initializers
+
+    init(
+        id: String,
+        type: ContentBlockType,
+        timestamp: Double,
+        content: String? = nil,
+        isPartial: Bool? = nil,
+        toolId: String? = nil,
+        toolName: String? = nil,
+        input: [String: AnyCodableValue]? = nil,
+        isError: Bool? = nil,
+        path: String? = nil,
+        diff: String? = nil,
+        command: String? = nil,
+        exitCode: Int? = nil,
+        action: String? = nil,
+        prompt: String? = nil,
+        options: [String]? = nil,
+        language: String? = nil,
+        code: String? = nil,
+        message: String? = nil,
+        errorCode: String? = nil,
+        model: String? = nil,
+        role: String? = nil,
+        reason: String? = nil,
+        suspended: Bool? = nil,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        isSuccess: Bool? = nil,
+        isMode: Bool? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.timestamp = timestamp
+        self.content = content
+        self.isPartial = isPartial
+        self.toolId = toolId
+        self.toolName = toolName
+        self.input = input
+        self.isError = isError
+        self.path = path
+        self.diff = diff
+        self.command = command
+        self.exitCode = exitCode
+        self.action = action
+        self.prompt = prompt
+        self.options = options
+        self.language = language
+        self.code = code
+        self.message = message
+        self.errorCode = errorCode
+        self.model = model
+        self.role = role
+        self.reason = reason
+        self.suspended = suspended
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.isSuccess = isSuccess
+        self.isMode = isMode
+    }
     
     // MARK: - Convenience Properties
     
@@ -198,14 +260,83 @@ struct ChatContentBlock: Codable, Identifiable, Hashable {
     var isErrorBlock: Bool {
         type == .error || (isError == true)
     }
+
+    /// Create a copy with isPartial set to false (completed)
+    func withCompleted(_ completed: Bool) -> ChatContentBlock {
+        ChatContentBlock(
+            id: id,
+            type: type,
+            timestamp: timestamp,
+            content: content,
+            isPartial: !completed,
+            toolId: toolId,
+            toolName: toolName,
+            input: input,
+            isError: isError,
+            path: path,
+            diff: diff,
+            command: command,
+            exitCode: exitCode,
+            action: action,
+            prompt: prompt,
+            options: options,
+            language: language,
+            code: code,
+            message: message,
+            errorCode: errorCode,
+            model: model,
+            role: role,
+            reason: reason,
+            suspended: suspended,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            isSuccess: isSuccess,
+            isMode: isMode
+        )
+    }
     
     /// Tool display info for tool_use blocks
     var toolDisplayInfo: (icon: String, name: String, description: String) {
         guard let toolName = toolName else {
             return ("wrench", "Tool", "Running tool")
         }
-        
-        let inputDict = input ?? [:]
+
+        // Try to get input from the input dict, or parse it from content JSON
+        var inputDict = input ?? [:]
+        if inputDict.isEmpty, let contentStr = content, !contentStr.isEmpty {
+            // Try parsing as complete JSON first
+            if let data = contentStr.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                // Convert JSON dict to AnyCodableValue dict
+                for (key, value) in json {
+                    if let stringValue = value as? String {
+                        inputDict[key] = AnyCodableValue.string(stringValue)
+                    } else if let intValue = value as? Int {
+                        inputDict[key] = AnyCodableValue.int(intValue)
+                    } else if let boolValue = value as? Bool {
+                        inputDict[key] = AnyCodableValue.bool(boolValue)
+                    }
+                }
+            } else {
+                // Try to extract values from partial JSON using regex with capture groups
+                // Extract "command": "value" pattern
+                if let extracted = extractJSONStringValue(from: contentStr, forKey: "command") {
+                    inputDict["command"] = AnyCodableValue.string(extracted)
+                }
+                // Extract "pattern": "value" pattern
+                if let extracted = extractJSONStringValue(from: contentStr, forKey: "pattern") {
+                    inputDict["pattern"] = AnyCodableValue.string(extracted)
+                }
+                // Extract "path": "value" pattern
+                if let extracted = extractJSONStringValue(from: contentStr, forKey: "path") {
+                    inputDict["path"] = AnyCodableValue.string(extracted)
+                }
+                // Extract "file_path": "value" pattern
+                if let extracted = extractJSONStringValue(from: contentStr, forKey: "file_path") {
+                    inputDict["path"] = AnyCodableValue.string(extracted)
+                }
+            }
+        }
         
         switch toolName.lowercased() {
         case "read", "read_file":
@@ -245,7 +376,23 @@ struct ChatContentBlock: Codable, Identifiable, Hashable {
             return ("wrench.and.screwdriver", toolName, "Running \(toolName)")
         }
     }
-    
+
+    /// Extract a string value from partial JSON for a given key
+    /// Handles incomplete JSON like {"command": "ls -la" without closing brace
+    private func extractJSONStringValue(from json: String, forKey key: String) -> String? {
+        // Pattern: "key": "value" or "key":"value"
+        // We need to find the key, then extract the value after the colon and quotes
+        let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]*)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: json, options: [], range: NSRange(json.startIndex..., in: json)),
+              match.numberOfRanges >= 2,
+              let valueRange = Range(match.range(at: 1), in: json) else {
+            return nil
+        }
+        let value = String(json[valueRange])
+        return value.isEmpty ? nil : value
+    }
+
     // MARK: - Hashable
     
     func hash(into hasher: inout Hasher) {

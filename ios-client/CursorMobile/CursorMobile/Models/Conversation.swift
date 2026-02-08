@@ -43,9 +43,9 @@ enum ChatMode: String, CaseIterable, Identifiable, Codable {
     case agent = "agent"
     case plan = "plan"
     case ask = "ask"
-    
+
     var id: String { rawValue }
-    
+
     var displayName: String {
         switch self {
         case .agent: return "Agent"
@@ -53,12 +53,60 @@ enum ChatMode: String, CaseIterable, Identifiable, Codable {
         case .ask: return "Ask"
         }
     }
-    
+
     var description: String {
         switch self {
         case .agent: return "Full agent with file editing"
         case .plan: return "Read-only planning mode"
         case .ask: return "Q&A style explanations"
+        }
+    }
+}
+
+// MARK: - Permission Mode
+
+/// Permission mode for chat actions (maps to Claude CLI --permission-mode)
+enum PermissionMode: String, CaseIterable, Identifiable, Codable {
+    case defaultMode = "default"
+    case acceptEdits = "acceptEdits"
+    case bypassPermissions = "bypassPermissions"
+    case dontAsk = "dontAsk"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .defaultMode: return "Default"
+        case .acceptEdits: return "Accept Edits"
+        case .bypassPermissions: return "Accept All (YOLO)"
+        case .dontAsk: return "Don't Ask"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .defaultMode: return "Prompt for file edits and commands, auto-approve reads"
+        case .acceptEdits: return "Auto-approve file edits, still ask for commands"
+        case .bypassPermissions: return "Auto-approve all actions (use with caution)"
+        case .dontAsk: return "Never prompt, deny unapproved actions"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .defaultMode: return "hand.raised"
+        case .acceptEdits: return "pencil"
+        case .bypassPermissions: return "bolt.fill"
+        case .dontAsk: return "hand.raised.slash"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .defaultMode: return .blue
+        case .acceptEdits: return .green
+        case .bypassPermissions: return .orange
+        case .dontAsk: return .red
         }
     }
 }
@@ -69,22 +117,32 @@ enum ChatMode: String, CaseIterable, Identifiable, Codable {
 /// This is the primary chat model - chats are now simply tmux windows
 struct ChatWindow: Identifiable, Codable, Hashable {
     let id: String
-    let windowName: String
+    let windowName: String?
     let tool: String
-    let sessionName: String
-    let windowIndex: Int
+    let sessionName: String?
+    let windowIndex: Int?
     let projectPath: String
-    let active: Bool
+    let active: Bool?
     
     // Optional fields that may or may not be present
     let terminalId: String?
     let topic: String?
     let title: String?
     let timestamp: Double?
-    let createdAt: String?
+    let createdAt: Double?
+    let status: String?
     
     var toolEnum: ChatTool? {
         ChatTool(rawValue: tool)
+    }
+    
+    /// Whether the chat is currently active/running
+    var isActive: Bool {
+        if let active = active { return active }
+        if let status = status {
+            return status == "running" || status == "created"
+        }
+        return false
     }
     
     var displayTitle: String {
@@ -94,7 +152,7 @@ struct ChatWindow: Identifiable, Codable, Hashable {
         if let title = title, !title.isEmpty {
             return title
         }
-        return windowName
+        return windowName ?? "Chat"
     }
     
     /// Tool icon for display
@@ -119,22 +177,29 @@ struct ChatsResponse: Codable {
     let total: Int?
 }
 
-/// Response from POST /api/conversations - creates a tmux chat window
+/// Response from POST /api/conversations - creates a chat session
 struct ChatWindowResponse: Codable {
     let success: Bool
-    let terminalId: String
-    let windowName: String
-    let sessionName: String
-    let windowIndex: Int
+    let conversationId: String
     let tool: String
     let topic: String
     let model: String?
     let mode: String
     let projectPath: String
     let projectName: String?
-    
-    // For backwards compatibility, chatId maps to terminalId
-    var chatId: String { terminalId }
+    let status: String?
+
+    // Legacy aliases for compatibility
+    let terminalId: String?
+    let chatId: String?
+    let windowName: String?
+    let sessionName: String?
+    let windowIndex: Int?
+
+    /// The effective conversation ID (handles legacy responses)
+    var effectiveId: String {
+        conversationId
+    }
 }
 
 // MARK: - AI Models

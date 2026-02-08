@@ -1,77 +1,63 @@
 import { Router } from 'express';
-import { tmuxManager } from '../utils/TmuxManager.js';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { chatProcessManager } from '../utils/ChatProcessManager.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
 import { getSupportedTools, checkAllToolsAvailability } from '../utils/CLIAdapter.js';
 import { logger } from '../utils/LogManager.js';
 
 const router = Router();
-const workspaceManager = new CursorWorkspace();
+const projectManager = new ProjectManager();
 
 /**
- * Conversations API - Tmux Chat Windows
- * 
- * Chats are now tmux windows running AI CLI tools directly.
- * This provides a simple, consistent experience:
- * - Create a chat = create a tmux window running claude/cursor-agent/gemini
- * - View a chat = attach to the tmux window via terminal view
- * - Chat history is managed by the CLI tools themselves
- * 
- * Window naming: chat-{tool}-{topic}
- * Examples: chat-claude-auth-bug, chat-cursor-refactor, chat-gemini-review
+ * Conversations API - AI Chat Sessions
+ *
+ * Chats are now managed by ChatProcessManager which spawns CLI processes
+ * with structured JSON output. This provides:
+ * - Clean content blocks (no ANSI codes)
+ * - Proper message streaming
+ * - Session resume support
  */
 
-// Get list of all chat windows for a project
+// Get list of all chats for a project
 router.get('/', async (req, res) => {
   try {
     const { projectPath, projectId } = req.query;
-    
+
     // Get project path from projectId if not provided directly
     let resolvedProjectPath = projectPath;
     if (!resolvedProjectPath && projectId && projectId !== 'global') {
-      const project = await workspaceManager.getProjectDetails(projectId);
+      const project = await projectManager.getProjectDetails(projectId);
       if (project) {
         resolvedProjectPath = project.path;
       }
     }
-    
-    if (!resolvedProjectPath) {
-      return res.json({
-        chats: [],
-        total: 0,
-        message: 'No project path specified'
-      });
-    }
 
-    // List chat windows from tmux
-    const chatWindows = tmuxManager.listChatWindows(resolvedProjectPath);
-    
+    // List chats from ChatProcessManager
+    const chats = chatProcessManager.listChats(resolvedProjectPath);
+
     // Format for API response
-    const chats = chatWindows.map(w => ({
-      id: w.id,
-      terminalId: w.id,
-      windowName: w.windowName,
-      tool: w.tool,
-      topic: w.topic,
-      sessionName: w.sessionName,
-      windowIndex: w.windowIndex,
-      projectPath: resolvedProjectPath,
+    const formattedChats = chats.map(chat => ({
+      id: chat.id,
+      conversationId: chat.id,
+      tool: chat.tool,
+      topic: chat.topic,
+      model: chat.model,
+      mode: chat.mode,
+      projectPath: chat.projectPath,
+      status: chat.status,
+      createdAt: chat.createdAt,
       type: 'chat',
-      source: 'tmux',
-      active: w.active,
-      // For backwards compatibility with existing iOS code
-      title: `${w.tool}: ${w.topic}`,
-      timestamp: Date.now(), // We don't track creation time in tmux
-      messageCount: 0 // Not applicable for tmux chats
+      title: `${chat.tool}: ${chat.topic}`,
+      timestamp: chat.createdAt,
     }));
 
     res.json({
-      chats,
-      conversations: chats, // Alias for backwards compatibility
-      total: chats.length
+      chats: formattedChats,
+      conversations: formattedChats, // Alias for backwards compatibility
+      total: formattedChats.length
     });
   } catch (error) {
-    console.error('Error fetching chat windows:', error);
-    res.status(500).json({ error: 'Failed to fetch chat windows' });
+    console.error('Error fetching chats:', error);
+    res.status(500).json({ error: 'Failed to fetch chats' });
   }
 });
 
@@ -91,7 +77,7 @@ router.get('/tools', async (req, res) => {
   try {
     const tools = getSupportedTools();
     const availability = await checkAllToolsAvailability();
-    
+
     res.json({
       tools: tools.map(tool => ({
         id: tool,
@@ -104,95 +90,76 @@ router.get('/tools', async (req, res) => {
   }
 });
 
-// Get specific chat window info
-router.get('/:terminalId', async (req, res) => {
+// Get specific chat info
+router.get('/:conversationId', async (req, res) => {
   try {
-    const { terminalId } = req.params;
-    
-    // Check if this is a tmux terminal ID
-    if (!tmuxManager.isTmuxTerminal(terminalId)) {
-      return res.status(400).json({ 
-        error: 'Invalid terminal ID',
-        details: 'Terminal ID must be a tmux terminal (format: tmux-sessionName:windowIndex)'
-      });
+    const { conversationId } = req.params;
+
+    const chatInfo = chatProcessManager.getChat(conversationId);
+
+    if (!chatInfo) {
+      return res.status(404).json({ error: 'Chat not found' });
     }
-    
-    const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
-    const windows = tmuxManager.listWindows(sessionName);
-    const window = windows.find(w => w.index === windowIndex);
-    
-    if (!window) {
-      return res.status(404).json({ error: 'Chat window not found' });
-    }
-    
-    // Check if it's a chat window
-    if (!tmuxManager.isChatWindow(window.name)) {
-      return res.status(400).json({ 
-        error: 'Not a chat window',
-        details: 'This terminal is not a chat window'
-      });
-    }
-    
-    // Parse window name: chat-{tool}-{topic}
-    const parts = window.name.split('-');
-    const tool = parts[1] || 'unknown';
-    const topic = parts.slice(2).join('-') || 'unknown';
-    
+
     res.json({
       chat: {
-        id: terminalId,
-        terminalId,
-        windowName: window.name,
-        tool,
-        topic,
-        sessionName,
-        windowIndex: window.index,
-        currentPath: window.currentPath,
-        active: window.active,
+        id: chatInfo.id,
+        conversationId: chatInfo.id,
+        tool: chatInfo.tool,
+        topic: chatInfo.topic,
+        model: chatInfo.model,
+        mode: chatInfo.mode,
+        projectPath: chatInfo.projectPath,
+        status: chatInfo.status,
+        createdAt: chatInfo.createdAt,
+        pid: chatInfo.pid,
         type: 'chat',
-        title: `${tool}: ${topic}`
+        title: `${chatInfo.tool}: ${chatInfo.topic}`
       }
     });
   } catch (error) {
-    console.error('Error fetching chat window:', error);
-    res.status(500).json({ error: 'Failed to fetch chat window details' });
+    console.error('Error fetching chat:', error);
+    res.status(500).json({ error: 'Failed to fetch chat details' });
   }
 });
 
-// Create a new chat window
+// Create a new chat
 router.post('/', async (req, res) => {
   try {
-    const { 
-      projectPath, 
+    const {
+      projectPath,
       projectId,
-      tool = 'claude', 
-      topic, 
-      model, 
+      tool = 'claude',
+      topic,
+      model,
       mode = 'agent',
-      initialPrompt 
+      permissionMode = 'default',
+      sessionId,  // For resuming sessions
+      initialPrompt,  // Optional initial message to send after CLI starts
     } = req.body;
-    
-    logger.info('Chat', 'Creating new chat window', {
+
+    logger.info('Chat', 'Creating new chat', {
       projectPath,
       projectId,
       tool,
       topic,
       model,
-      mode
+      mode,
+      permissionMode
     });
 
     // Resolve project path
     let resolvedProjectPath = projectPath;
     let projectName = null;
-    
+
     if (!resolvedProjectPath && projectId && projectId !== 'global') {
-      const project = await workspaceManager.getProjectDetails(projectId);
+      const project = await projectManager.getProjectDetails(projectId);
       if (project) {
         resolvedProjectPath = project.path;
         projectName = project.name;
       }
     }
-    
+
     if (!resolvedProjectPath) {
       return res.status(400).json({
         error: 'Project path required',
@@ -220,137 +187,153 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Create the chat window
-    const chatWindow = tmuxManager.createChatWindow({
+    // Create the chat session
+    const chatResult = await chatProcessManager.createChat({
       projectPath: resolvedProjectPath,
       tool,
       topic,
       model,
-      mode
+      mode,
+      permissionMode,
+      sessionId,
+      initialPrompt,
     });
-    
-    // If there's an initial prompt, send it after a short delay
-    if (initialPrompt && initialPrompt.trim()) {
-      tmuxManager.sendInitialPrompt(
-        chatWindow.sessionName,
-        chatWindow.windowIndex,
-        initialPrompt.trim(),
-        2000 // 2 second delay to let CLI initialize
-      );
-    }
 
-    logger.info('Chat', 'Chat window created', {
-      terminalId: chatWindow.id,
-      windowName: chatWindow.windowName,
+    logger.info('Chat', 'Chat created', {
+      conversationId: chatResult.conversationId,
       tool,
-      topic: chatWindow.topic
+      topic: chatResult.topic
     });
-    
-    console.log(`Created chat window: ${chatWindow.windowName} (${chatWindow.id})`);
+
+    console.log(`Created chat: ${chatResult.conversationId} (${tool})`);
 
     res.json({
       success: true,
-      terminalId: chatWindow.id,
-      windowName: chatWindow.windowName,
-      sessionName: chatWindow.sessionName,
-      windowIndex: chatWindow.windowIndex,
+      conversationId: chatResult.conversationId,
+      chatId: chatResult.conversationId,  // Alias
+      terminalId: chatResult.conversationId,  // Legacy alias
       tool,
-      topic: chatWindow.topic,
-      model: chatWindow.model,
-      mode: chatWindow.mode,
+      topic: chatResult.topic,
+      model: chatResult.model,
+      mode: chatResult.mode,
       projectPath: resolvedProjectPath,
       projectName,
-      // For backwards compatibility
-      chatId: chatWindow.id
+      status: chatResult.status,
     });
   } catch (error) {
-    logger.error('Chat', 'Failed to create chat window', {
+    logger.error('Chat', 'Failed to create chat', {
       errorMessage: error.message
     });
-    
-    console.error('Error creating chat window:', error);
+
+    console.error('Error creating chat:', error);
     res.status(500).json({
-      error: 'Failed to create chat window',
+      error: 'Failed to create chat',
       details: error.message
     });
   }
 });
 
-// Close/delete a chat window
-router.delete('/:terminalId', async (req, res) => {
+// Close/delete a chat
+router.delete('/:conversationId', async (req, res) => {
   try {
-    const { terminalId } = req.params;
-    
-    if (!tmuxManager.isTmuxTerminal(terminalId)) {
-      return res.status(400).json({ 
-        error: 'Invalid terminal ID'
-      });
+    const { conversationId } = req.params;
+
+    const chatInfo = chatProcessManager.getChat(conversationId);
+
+    if (!chatInfo) {
+      return res.status(404).json({ error: 'Chat not found' });
     }
-    
-    const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
-    
-    // Verify it's a chat window before killing
-    const windows = tmuxManager.listWindows(sessionName);
-    const window = windows.find(w => w.index === windowIndex);
-    
-    if (!window) {
-      return res.status(404).json({ error: 'Window not found' });
-    }
-    
-    if (!tmuxManager.isChatWindow(window.name)) {
-      return res.status(400).json({ 
-        error: 'Not a chat window',
-        details: 'Use /api/terminals endpoint for regular terminals'
-      });
-    }
-    
-    // Kill the window
-    tmuxManager.killWindow(sessionName, windowIndex);
-    
-    logger.info('Chat', 'Chat window closed', {
-      terminalId,
-      windowName: window.name
+
+    await chatProcessManager.closeChat(conversationId);
+
+    logger.info('Chat', 'Chat closed', {
+      conversationId,
+      tool: chatInfo.tool
     });
-    
+
     res.json({
       success: true,
-      terminalId,
-      windowName: window.name,
-      message: 'Chat window closed'
+      conversationId,
+      message: 'Chat closed'
     });
   } catch (error) {
-    console.error('Error closing chat window:', error);
-    res.status(500).json({ error: 'Failed to close chat window' });
+    console.error('Error closing chat:', error);
+    res.status(500).json({ error: 'Failed to close chat' });
   }
 });
 
-// Send initial prompt to an existing chat window
-router.post('/:terminalId/prompt', async (req, res) => {
+// Get chat history/messages
+router.get('/:conversationId/messages', async (req, res) => {
   try {
-    const { terminalId } = req.params;
-    const { prompt, delay = 500 } = req.body;
-    
-    if (!prompt || !prompt.trim()) {
-      return res.status(400).json({ error: 'Prompt is required' });
+    const { conversationId } = req.params;
+
+    if (!chatProcessManager.hasChat(conversationId)) {
+      return res.status(404).json({ error: 'Chat not found' });
     }
-    
-    if (!tmuxManager.isTmuxTerminal(terminalId)) {
-      return res.status(400).json({ error: 'Invalid terminal ID' });
-    }
-    
-    const { sessionName, windowIndex } = tmuxManager.parseTerminalId(terminalId);
-    
-    // Send the prompt
-    tmuxManager.sendInitialPrompt(sessionName, windowIndex, prompt.trim(), delay);
-    
+
+    const messages = chatProcessManager.getBufferedMessages(conversationId);
+
     res.json({
-      success: true,
-      terminalId,
-      message: 'Prompt will be sent to the chat window'
+      conversationId,
+      messages,
+      total: messages.length
     });
   } catch (error) {
-    console.error('Error sending prompt:', error);
-    res.status(500).json({ error: 'Failed to send prompt' });
+    console.error('Error fetching chat messages:', error);
+    res.status(500).json({ error: 'Failed to fetch chat messages' });
+  }
+});
+
+// Fork/clone a chat (creates new chat with same settings)
+router.post('/:conversationId/fork', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { newTopic } = req.body;
+
+    logger.info('Chat', 'Forking chat', { conversationId, newTopic });
+
+    const sourceChat = chatProcessManager.getChat(conversationId);
+    if (!sourceChat) {
+      return res.status(404).json({ error: 'Source chat not found' });
+    }
+
+    // Generate new topic
+    const forkTopic = newTopic || `${sourceChat.topic}-fork-${Date.now().toString(36)}`;
+
+    // Create new chat with same settings
+    const newChat = await chatProcessManager.createChat({
+      projectPath: sourceChat.projectPath,
+      tool: sourceChat.tool,
+      topic: forkTopic,
+      model: sourceChat.model,
+      mode: sourceChat.mode,
+    });
+
+    logger.info('Chat', 'Chat forked successfully', {
+      sourceConversationId: conversationId,
+      newConversationId: newChat.conversationId,
+      tool: sourceChat.tool,
+    });
+
+    res.json({
+      success: true,
+      conversationId: newChat.conversationId,
+      sourceConversationId: conversationId,
+      tool: sourceChat.tool,
+      topic: forkTopic,
+      originalTopic: sourceChat.topic,
+      projectPath: sourceChat.projectPath,
+      message: 'Chat forked successfully'
+    });
+  } catch (error) {
+    logger.error('Chat', 'Failed to fork chat', {
+      errorMessage: error.message
+    });
+    console.error('Error forking chat:', error);
+    res.status(500).json({
+      error: 'Failed to fork chat',
+      details: error.message
+    });
   }
 });
 

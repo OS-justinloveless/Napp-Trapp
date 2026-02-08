@@ -63,16 +63,6 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function openInCursor() {
-    try {
-      await apiRequest(`/api/projects/${projectId}/open`, {
-        method: 'POST'
-      });
-    } catch (err) {
-      console.error('Failed to open project:', err);
-    }
-  }
-
   async function createNewChat() {
     if (isCreatingChat) return;
     
@@ -84,7 +74,7 @@ export default function ProjectDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           projectPath: project?.path,
-          tool: 'cursor-agent',
+          tool: 'claude',
           mode: 'agent'
         })
       });
@@ -155,9 +145,6 @@ export default function ProjectDetailPage() {
       </div>
       
       <div className={styles.actions}>
-        <button className={styles.actionButton} onClick={openInCursor}>
-          🚀 Open in Cursor
-        </button>
         <button className={styles.actionButton} onClick={loadProject}>
           🔄 Refresh
         </button>

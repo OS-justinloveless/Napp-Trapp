@@ -71,7 +71,7 @@ export default function LoginPage() {
         <div className={styles.logo}>
           <span className={styles.logoIcon}>⌨️</span>
           <h1 className={styles.title}>Napp Trapp</h1>
-          <p className={styles.subtitle}>Control Cursor from your phone</p>
+          <p className={styles.subtitle}>Your mobile IDE</p>
         </div>
         
         <div className={styles.qrInfo}>

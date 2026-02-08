@@ -2,11 +2,12 @@ import express from 'express';
 import path from 'path';
 import { spawn, execSync } from 'child_process';
 import { GitManager } from '../utils/GitManager.js';
-import { CursorWorkspace } from '../utils/CursorWorkspace.js';
+import { ProjectManager } from '../utils/ProjectManager.js';
+import { getSupportedTools, getCLIAdapter } from '../utils/CLIAdapter.js';
 
 export const gitRoutes = express.Router();
 const gitManager = new GitManager();
-const workspace = new CursorWorkspace();
+const workspace = new ProjectManager();
 
 /**
  * Helper to get project path from project ID
@@ -288,14 +289,19 @@ gitRoutes.post('/:projectId/branch', async (req, res) => {
   try {
     const { projectId } = req.params;
     const { repoPath } = req.query;
-    const { name, checkout } = req.body;
+    const { name, checkout, startPoint } = req.body;
     
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Branch name is required' });
     }
     
     const repoFullPath = await resolveRepoPath(projectId, repoPath);
-    const result = await gitManager.createBranch(repoFullPath, name, checkout !== false);
+    let result;
+    if (startPoint) {
+      result = await gitManager.createBranchFrom(repoFullPath, name, startPoint, checkout !== false);
+    } else {
+      result = await gitManager.createBranch(repoFullPath, name, checkout !== false);
+    }
     res.json(result);
   } catch (error) {
     console.error('Error creating branch:', error);
@@ -309,12 +315,13 @@ gitRoutes.post('/:projectId/branch', async (req, res) => {
 /**
  * GET /api/git/:projectId/diff
  * Get diff for a file
- * Query: file (required), staged (optional boolean), maxLines (optional, default 2000), repoPath (optional)
+ * Query: file (required), staged (optional boolean), commitHash (optional), maxLines (optional, default 2000), repoPath (optional)
+ * When commitHash is provided, returns the diff for that file in that specific commit.
  */
 gitRoutes.get('/:projectId/diff', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { file, staged, maxLines, repoPath } = req.query;
+    const { file, staged, commitHash, maxLines, repoPath } = req.query;
     
     if (!file) {
       return res.status(400).json({ error: 'File path is required' });
@@ -322,7 +329,13 @@ gitRoutes.get('/:projectId/diff', async (req, res) => {
     
     const repoFullPath = await resolveRepoPath(projectId, repoPath);
     const limit = maxLines ? parseInt(maxLines, 10) : 2000;
-    const result = await gitManager.getDiff(repoFullPath, file, staged === 'true', limit);
+    
+    let result;
+    if (commitHash) {
+      result = await gitManager.getCommitDiff(repoFullPath, commitHash, file, limit);
+    } else {
+      result = await gitManager.getDiff(repoFullPath, file, staged === 'true', limit);
+    }
     res.json(result);
   } catch (error) {
     console.error('Error getting diff:', error);
@@ -336,15 +349,17 @@ gitRoutes.get('/:projectId/diff', async (req, res) => {
 /**
  * GET /api/git/:projectId/log
  * Get recent commits
- * Query: limit (optional, default 10), repoPath (optional)
+ * Query: limit (optional, default 10), skip (optional, default 0), repoPath (optional)
  */
 gitRoutes.get('/:projectId/log', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { limit, repoPath } = req.query;
+    const { limit, skip, repoPath } = req.query;
     
     const repoFullPath = await resolveRepoPath(projectId, repoPath);
-    const commits = await gitManager.getLog(repoFullPath, limit ? parseInt(limit, 10) : 10);
+    const parsedLimit = limit ? parseInt(limit, 10) : 10;
+    const parsedSkip = skip ? parseInt(skip, 10) : 0;
+    const commits = await gitManager.getLog(repoFullPath, parsedLimit, parsedSkip);
     res.json({ commits });
   } catch (error) {
     console.error('Error getting log:', error);
@@ -458,6 +473,168 @@ gitRoutes.post('/:projectId/clean', async (req, res) => {
 });
 
 /**
+ * GET /api/git/:projectId/commit/:hash
+ * Get detailed information for a single commit
+ * Query: repoPath (optional) - relative path to sub-repository
+ */
+gitRoutes.get('/:projectId/commit/:hash', async (req, res) => {
+  try {
+    const { projectId, hash } = req.params;
+    const { repoPath } = req.query;
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    
+    const detail = await gitManager.getCommitDetail(repoFullPath, hash);
+    res.json(detail);
+  } catch (error) {
+    console.error('Error getting commit detail:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to get commit detail',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/checkout-detached
+ * Checkout a commit in detached HEAD mode
+ * Query: repoPath (optional) - relative path to sub-repository
+ * Body: { hash: string }
+ */
+gitRoutes.post('/:projectId/checkout-detached', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { repoPath } = req.query;
+    const { hash } = req.body;
+    
+    if (!hash || typeof hash !== 'string') {
+      return res.status(400).json({ error: 'Commit hash is required' });
+    }
+    
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    const result = await gitManager.checkoutCommit(repoFullPath, hash);
+    res.json(result);
+  } catch (error) {
+    console.error('Error checking out commit:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to checkout commit',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/cherry-pick
+ * Cherry-pick a commit onto the current branch
+ * Query: repoPath (optional) - relative path to sub-repository
+ * Body: { hash: string }
+ */
+gitRoutes.post('/:projectId/cherry-pick', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { repoPath } = req.query;
+    const { hash } = req.body;
+    
+    if (!hash || typeof hash !== 'string') {
+      return res.status(400).json({ error: 'Commit hash is required' });
+    }
+    
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    const result = await gitManager.cherryPick(repoFullPath, hash);
+    res.json(result);
+  } catch (error) {
+    console.error('Error cherry-picking commit:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to cherry-pick commit',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/revert-commit
+ * Revert a commit (creates a new revert commit)
+ * Query: repoPath (optional) - relative path to sub-repository
+ * Body: { hash: string }
+ */
+gitRoutes.post('/:projectId/revert-commit', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { repoPath } = req.query;
+    const { hash } = req.body;
+    
+    if (!hash || typeof hash !== 'string') {
+      return res.status(400).json({ error: 'Commit hash is required' });
+    }
+    
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    const result = await gitManager.revertCommit(repoFullPath, hash);
+    res.json(result);
+  } catch (error) {
+    console.error('Error reverting commit:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to revert commit',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/tag
+ * Create a tag on a commit
+ * Query: repoPath (optional) - relative path to sub-repository
+ * Body: { name: string, hash?: string, message?: string }
+ */
+gitRoutes.post('/:projectId/tag', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { repoPath } = req.query;
+    const { name, hash, message } = req.body;
+    
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Tag name is required' });
+    }
+    
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    const result = await gitManager.createTag(repoFullPath, name, hash, message);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating tag:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to create tag',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/git/:projectId/reset
+ * Reset to a commit
+ * Query: repoPath (optional) - relative path to sub-repository
+ * Body: { hash: string, mode: "soft" | "mixed" | "hard" }
+ */
+gitRoutes.post('/:projectId/reset', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { repoPath } = req.query;
+    const { hash, mode } = req.body;
+    
+    if (!hash || typeof hash !== 'string') {
+      return res.status(400).json({ error: 'Commit hash is required' });
+    }
+    
+    const repoFullPath = await resolveRepoPath(projectId, repoPath);
+    const result = await gitManager.resetToCommit(repoFullPath, hash, mode || 'mixed');
+    res.json(result);
+  } catch (error) {
+    console.error('Error resetting to commit:', error);
+    res.status(error.message === 'Project not found' ? 404 : 500).json({
+      error: 'Failed to reset to commit',
+      message: error.message
+    });
+  }
+});
+
+/**
  * POST /api/git/:projectId/generate-commit-message
  * Generate a commit message using cursor-agent based on staged changes
  * Query: repoPath (optional) - relative path to sub-repository
@@ -500,7 +677,7 @@ gitRoutes.post('/:projectId/generate-commit-message', async (req, res) => {
       truncated = true;
     }
     
-    // Build the prompt for cursor-agent
+    // Build the prompt
     const prompt = `Generate a concise git commit message for the following staged changes. 
 
 The message should:
@@ -518,31 +695,56 @@ ${diffForPrompt}
 
 Respond with ONLY the commit message, nothing else. No quotes, no explanation, just the message.`;
 
-    console.log('[git.js] Calling cursor-agent to generate commit message...');
+    console.log('[git.js] Looking for available AI CLI tool to generate commit message...');
     
-    // Check if cursor-agent exists
-    try {
-      execSync('which cursor-agent', { stdio: 'pipe' });
-    } catch (e) {
+    // Find the first available AI CLI tool
+    let availableTool = null;
+    const toolPreference = ['claude', 'cursor-agent', 'gemini'];
+    
+    for (const toolName of toolPreference) {
+      try {
+        const adapter = getCLIAdapter(toolName);
+        if (await adapter.isAvailable()) {
+          availableTool = { name: toolName, adapter };
+          break;
+        }
+      } catch (e) {
+        // Tool not available, try next
+      }
+    }
+    
+    if (!availableTool) {
       return res.status(500).json({ 
-        error: 'cursor-agent CLI not found',
-        message: 'Please install cursor-agent: curl https://cursor.com/install -fsS | bash'
+        error: 'No AI CLI tool found',
+        message: 'Please install an AI CLI tool (claude, cursor-agent, or gemini)'
       });
     }
     
-    // Call cursor-agent with the prompt
+    console.log(`[git.js] Using ${availableTool.name} to generate commit message...`);
+    
+    // Build the command based on the available tool
+    const executable = availableTool.adapter.getResolvedExecutable();
+    let args;
+    
+    switch (availableTool.name) {
+      case 'claude':
+        args = ['--print', '--output-format', 'text', prompt];
+        break;
+      case 'cursor-agent':
+        args = ['--workspace', repoFullPath, '-p', '--output-format', 'text', prompt];
+        break;
+      case 'gemini':
+        args = ['--prompt', prompt];
+        break;
+      default:
+        args = [prompt];
+    }
+    
+    // Call the AI CLI with the prompt
     const result = await new Promise((resolve, reject) => {
-      const args = [
-        '-p',  // Print mode (non-interactive)
-        '--output-format', 'text',  // Plain text output
-        prompt
-      ];
-      
-      // Add workspace context for better understanding
-      args.unshift('--workspace', repoFullPath);
-      
-      const agent = spawn('cursor-agent', args, {
+      const agent = spawn(executable, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: repoFullPath,
         timeout: 60000  // 60 second timeout
       });
       
@@ -555,21 +757,21 @@ Respond with ONLY the commit message, nothing else. No quotes, no explanation, j
       
       agent.stderr.on('data', (data) => {
         errorOutput += data.toString();
-        console.log('[git.js] cursor-agent stderr:', data.toString());
+        console.log(`[git.js] ${availableTool.name} stderr:`, data.toString());
       });
       
       agent.on('close', (code) => {
         if (code !== 0) {
-          console.error('[git.js] cursor-agent failed with code:', code);
+          console.error(`[git.js] ${availableTool.name} failed with code:`, code);
           console.error('[git.js] stderr:', errorOutput);
-          reject(new Error(`cursor-agent failed: ${errorOutput || 'Unknown error'}`));
+          reject(new Error(`${availableTool.name} failed: ${errorOutput || 'Unknown error'}`));
         } else {
           resolve(output.trim());
         }
       });
       
       agent.on('error', (err) => {
-        console.error('[git.js] cursor-agent spawn error:', err);
+        console.error(`[git.js] ${availableTool.name} spawn error:`, err);
         reject(err);
       });
     });
