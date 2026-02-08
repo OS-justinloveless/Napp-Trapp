@@ -215,6 +215,7 @@ struct ContentBlockView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .italic()
+                    .textSelection(.enabled)
             }
         }
         .padding(12)
@@ -383,6 +384,7 @@ struct ContentBlockView: View {
             Text(block.message ?? block.content ?? "Error")
                 .font(.body)
                 .foregroundColor(.red)
+                .textSelection(.enabled)
         }
         .padding(12)
         .background(Color.red.opacity(0.1))

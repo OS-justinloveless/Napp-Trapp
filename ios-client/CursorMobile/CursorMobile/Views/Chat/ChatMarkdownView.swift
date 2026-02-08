@@ -94,8 +94,21 @@ struct ChatMarkdownView: View {
     private func renderBlock(_ block: MarkdownBlock) -> some View {
         switch block {
         case .text(let text):
-            renderInlineMarkdown(text)
-                .fixedSize(horizontal: false, vertical: true)
+            // Use full markdown parsing instead of inline-only
+            if let attributed = try? AttributedString(
+                markdown: text,
+                options: .init(
+                    allowsExtendedAttributes: true,
+                    interpretedSyntax: .full,
+                    failurePolicy: .returnPartiallyParsedIfPossible
+                )
+            ) {
+                Text(attributed)
+                    .textSelection(.enabled)
+            } else {
+                Text(text)
+                    .textSelection(.enabled)
+            }
 
         case .code(let language, let code):
             codeBlockView(language: language, code: code)
@@ -107,6 +120,7 @@ struct ChatMarkdownView: View {
                 .padding(.vertical, 2)
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(4)
+                .textSelection(.enabled)
         }
     }
 
