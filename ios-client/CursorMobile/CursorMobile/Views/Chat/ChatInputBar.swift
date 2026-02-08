@@ -95,6 +95,7 @@ struct ChatInputBar: View {
                     if isStreaming {
                         onCancel()
                     } else {
+                        isTextFieldFocused = false
                         onSend()
                     }
                 } label: {
