@@ -180,6 +180,15 @@ class ChatManager: ObservableObject {
         await fetchChats(projectPath: projectPath)
     }
 
+    /// Update the topic of a chat
+    func updateChatTopic(conversationId: String, topic: String) async throws {
+        guard let api = apiService else {
+            throw APIError.invalidURL
+        }
+
+        try await api.updateChatTopic(conversationId: conversationId, topic: topic)
+    }
+
     /// Fork/clone a chat with full history
     func forkChat(_ terminalId: String, projectPath: String) async throws -> ChatWindow {
         guard let api = apiService else {
@@ -294,6 +303,91 @@ class ChatManager: ObservableObject {
     /// Consume and return the pending initial message for a conversation (returns nil if none)
     func consumePendingInitialMessage(for conversationId: String) -> String? {
         pendingInitialMessages.removeValue(forKey: conversationId)
+    }
+
+    // MARK: - Chat History
+
+    /// Fetch persisted chat messages for a conversation (consolidated, non-partial)
+    /// Returns an array of ParsedMessage grouped by role (user/assistant turns)
+    func fetchChatHistory(conversationId: String) async -> [ParsedMessage] {
+        guard let api = apiService else {
+            print("[ChatManager] No API service available for fetchChatHistory")
+            return []
+        }
+
+        do {
+            let blocks = try await api.getChatMessages(conversationId: conversationId)
+            print("[ChatManager] Fetched \(blocks.count) persisted messages for \(conversationId)")
+            return groupBlocksIntoMessages(blocks)
+        } catch {
+            print("[ChatManager] Failed to fetch chat history: \(error)")
+            return []
+        }
+    }
+
+    /// Group flat content blocks into ParsedMessage turns by role
+    private func groupBlocksIntoMessages(_ blocks: [ChatContentBlock]) -> [ParsedMessage] {
+        var messages: [ParsedMessage] = []
+        var currentAssistantBlocks: [ChatContentBlock] = []
+        var lastTimestamp: Date = Date()
+
+        for block in blocks {
+            if let role = block.role, role == "user" {
+                // Finalize any pending assistant message
+                if !currentAssistantBlocks.isEmpty {
+                    let msg = ParsedMessage(
+                        id: currentAssistantBlocks.first?.id ?? UUID().uuidString,
+                        role: .assistant,
+                        blocks: currentAssistantBlocks,
+                        timestamp: lastTimestamp,
+                        isStreaming: false
+                    )
+                    messages.append(msg)
+                    currentAssistantBlocks = []
+                }
+
+                // Add user message
+                let userMsg = ParsedMessage(
+                    id: block.id,
+                    role: .user,
+                    blocks: [block],
+                    timestamp: Date(timeIntervalSince1970: block.timestamp / 1000),
+                    isStreaming: false
+                )
+                messages.append(userMsg)
+            } else if block.type == .sessionEnd {
+                // Session end - finalize any pending assistant message
+                if !currentAssistantBlocks.isEmpty {
+                    let msg = ParsedMessage(
+                        id: currentAssistantBlocks.first?.id ?? UUID().uuidString,
+                        role: .assistant,
+                        blocks: currentAssistantBlocks,
+                        timestamp: lastTimestamp,
+                        isStreaming: false
+                    )
+                    messages.append(msg)
+                    currentAssistantBlocks = []
+                }
+            } else {
+                // Assistant content block (text, tool_use, etc.)
+                currentAssistantBlocks.append(block)
+                lastTimestamp = Date(timeIntervalSince1970: block.timestamp / 1000)
+            }
+        }
+
+        // Finalize any remaining assistant blocks
+        if !currentAssistantBlocks.isEmpty {
+            let msg = ParsedMessage(
+                id: currentAssistantBlocks.first?.id ?? UUID().uuidString,
+                role: .assistant,
+                blocks: currentAssistantBlocks,
+                timestamp: lastTimestamp,
+                isStreaming: false
+            )
+            messages.append(msg)
+        }
+
+        return messages
     }
 
     // MARK: - Suggestions

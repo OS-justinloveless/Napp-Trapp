@@ -15,19 +15,30 @@ export default function ChatDetailPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   const { apiRequest } = useAuth();
-  
+
   const [chat, setChat] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [promptInput, setPromptInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendStatus, setSendStatus] = useState(null);
-  
+  const [isEditingTopic, setIsEditingTopic] = useState(false);
+  const [editedTopic, setEditedTopic] = useState('');
+
   const inputRef = useRef(null);
+  const topicInputRef = useRef(null);
 
   useEffect(() => {
     loadChatDetails();
   }, [chatId]);
+
+  useEffect(() => {
+    // Focus the topic input when editing starts
+    if (isEditingTopic && topicInputRef.current) {
+      topicInputRef.current.focus();
+      topicInputRef.current.select();
+    }
+  }, [isEditingTopic]);
 
   async function loadChatDetails() {
     try {
@@ -81,7 +92,7 @@ export default function ChatDetailPage() {
     if (!confirm('Close this chat window? The AI CLI session will be terminated.')) {
       return;
     }
-    
+
     try {
       await apiRequest(`/api/conversations/${chatId}`, {
         method: 'DELETE'
@@ -89,6 +100,58 @@ export default function ChatDetailPage() {
       navigate('/conversations');
     } catch (err) {
       setError('Failed to close chat: ' + err.message);
+    }
+  }
+
+  function startEditingTopic() {
+    setEditedTopic(chat?.topic || '');
+    setIsEditingTopic(true);
+  }
+
+  function cancelEditingTopic() {
+    setIsEditingTopic(false);
+    setEditedTopic('');
+  }
+
+  async function saveTopic() {
+    if (!editedTopic.trim()) {
+      alert('Topic cannot be empty');
+      return;
+    }
+
+    console.log('[ChatDetailPage] Updating topic for chat:', chatId);
+    console.log('[ChatDetailPage] New topic:', editedTopic.trim());
+
+    try {
+      const response = await apiRequest(`/api/conversations/${chatId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: editedTopic.trim() })
+      });
+
+      console.log('[ChatDetailPage] Response status:', response.status);
+      const data = await response.json();
+      console.log('[ChatDetailPage] Response data:', data);
+
+      if (data.success) {
+        setChat({ ...chat, topic: data.topic });
+        setIsEditingTopic(false);
+        setSendStatus({ type: 'success', message: 'Topic updated!' });
+        setTimeout(() => setSendStatus(null), 3000);
+      } else {
+        alert(data.error || 'Failed to update topic');
+      }
+    } catch (err) {
+      alert('Failed to update topic: ' + err.message);
+    }
+  }
+
+  function handleTopicKeyPress(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveTopic();
+    } else if (e.key === 'Escape') {
+      cancelEditingTopic();
     }
   }
 
@@ -139,19 +202,59 @@ export default function ChatDetailPage() {
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
-        <button 
+        <button
           className={styles.backButton}
           onClick={() => navigate('/conversations')}
         >
           ← Back
         </button>
         <div className={styles.headerInfo}>
-          <h2 className={styles.title}>
-            <span style={{ marginRight: '8px' }}>{toolInfo.icon}</span>
-            {getDisplayTitle()}
-          </h2>
+          {isEditingTopic ? (
+            <div className={styles.topicEditContainer}>
+              <input
+                ref={topicInputRef}
+                type="text"
+                className={styles.topicInput}
+                value={editedTopic}
+                onChange={(e) => setEditedTopic(e.target.value)}
+                onKeyDown={handleTopicKeyPress}
+                onBlur={cancelEditingTopic}
+                placeholder="Enter topic name..."
+              />
+              <button
+                className={styles.topicSaveButton}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Prevent blur
+                  saveTopic();
+                }}
+              >
+                ✓
+              </button>
+              <button
+                className={styles.topicCancelButton}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Prevent blur
+                  cancelEditingTopic();
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <h2 className={styles.title}>
+              <span style={{ marginRight: '8px' }}>{toolInfo.icon}</span>
+              {getDisplayTitle()}
+              <button
+                className={styles.editTopicButton}
+                onClick={startEditingTopic}
+                title="Edit topic"
+              >
+                ✎
+              </button>
+            </h2>
+          )}
           <div className={styles.headerMeta}>
-            <span 
+            <span
               className={styles.typeTag}
               style={{ backgroundColor: `${toolInfo.color}20`, color: toolInfo.color }}
             >
@@ -165,7 +268,7 @@ export default function ChatDetailPage() {
             </span>
           </div>
         </div>
-        <button 
+        <button
           className={styles.closeButton}
           onClick={closeChat}
           title="Close chat window"

@@ -1,52 +1,22 @@
-import fs from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * ChatPersistenceStore - Persists chat conversations and messages
+ * ChatPersistenceStore - Persists chat conversations and messages using SQLite
  *
  * This store maintains all chat data to survive server restarts.
- * Adapted from MobileChatStore.js to work with ChatProcessManager's data model.
+ * Uses SQLite for efficient storage and querying of conversations and messages.
+ *
+ * Database schema:
+ * - conversations: Stores conversation metadata
+ * - messages: Stores ALL messages including partial/streaming, tool calls, etc.
  *
  * Uses a singleton pattern to ensure all parts of the app share the same instance.
- *
- * Data structure:
- * {
- *   conversations: {
- *     [conversationId]: {
- *       id: string,
- *       tool: 'claude' | 'cursor-agent' | 'gemini',
- *       topic: string,
- *       model: string | null,
- *       mode: 'agent' | 'plan' | 'ask',
- *       projectPath: string,
- *       status: 'created' | 'running' | 'suspended' | 'ended',
- *       createdAt: number,
- *       updatedAt: number,
- *       sessionId: string | null,
- *       lastActivity: number
- *     }
- *   },
- *   messages: {
- *     [conversationId]: [
- *       {
- *         id: string,
- *         type: 'text' | 'tool_use_start' | 'tool_use_result' | 'thinking' | 'error' | etc.,
- *         conversationId: string,
- *         content: string,
- *         timestamp: number,
- *         isPartial: boolean,
- *         toolId: string | null,
- *         toolName: string | null,
- *         ...other ContentBlock fields
- *       }
- *     ]
- *   }
- * }
  */
 
 // Singleton instance
@@ -61,9 +31,8 @@ export class ChatPersistenceStore {
   constructor() {
     const serverDir = path.resolve(__dirname, '..');
     this.dataDir = path.join(serverDir, '.napp-trapp-data');
-    this.storePath = path.join(this.dataDir, 'chat-persistence.json');
-    this.data = null;
-    this.saveTimeout = null;
+    this.dbPath = path.join(this.dataDir, 'chat-persistence.db');
+    this.db = null;
     this.cleanupInterval = null;
 
     // Retention configuration
@@ -82,57 +51,65 @@ export class ChatPersistenceStore {
   }
 
   /**
-   * Ensure the data directory exists and load data
+   * Initialize the database and create tables
    */
   async init() {
-    if (this.data) return;
+    if (this.db) return;
 
     // Create data directory if it doesn't exist
     if (!existsSync(this.dataDir)) {
       mkdirSync(this.dataDir, { recursive: true });
     }
 
-    // Load existing data or create empty structure
-    if (existsSync(this.storePath)) {
-      try {
-        const content = await fs.readFile(this.storePath, 'utf-8');
-        this.data = JSON.parse(content);
-        console.log(`[ChatPersistenceStore] Loaded ${Object.keys(this.data.conversations || {}).length} conversations from disk`);
-      } catch (error) {
-        console.error('[ChatPersistenceStore] Error loading store:', error);
-        this.data = { conversations: {}, messages: {} };
-      }
-    } else {
-      this.data = { conversations: {}, messages: {} };
-    }
+    // Open database connection
+    this.db = new Database(this.dbPath);
+
+    // Enable WAL mode for better concurrent access
+    this.db.pragma('journal_mode = WAL');
+
+    // Create tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        tool TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        model TEXT,
+        mode TEXT NOT NULL,
+        projectPath TEXT NOT NULL,
+        status TEXT NOT NULL,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        sessionId TEXT,
+        lastActivity INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        conversationId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        role TEXT,
+        content TEXT,
+        timestamp INTEGER NOT NULL,
+        isPartial INTEGER DEFAULT 0,
+        toolId TEXT,
+        toolName TEXT,
+        isError INTEGER DEFAULT 0,
+        metadata TEXT,
+        FOREIGN KEY (conversationId) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId);
+      CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(conversationId, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_conversations_projectPath ON conversations(projectPath);
+      CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status);
+      CREATE INDEX IF NOT EXISTS idx_conversations_lastActivity ON conversations(lastActivity);
+    `);
+
+    const count = this.db.prepare('SELECT COUNT(*) as count FROM conversations').get();
+    console.log(`[ChatPersistenceStore] SQLite database initialized with ${count.count} conversations`);
 
     // Start automatic cleanup if not already running
     this.startAutoCleanup();
-  }
-
-  /**
-   * Save data to disk (debounced)
-   */
-  async save() {
-    if (!this.data) return;
-
-    // Clear any pending save
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-    }
-
-    // Debounce saves to avoid excessive disk writes during streaming
-    this.saveTimeout = setTimeout(async () => {
-      try {
-        await fs.writeFile(
-          this.storePath,
-          JSON.stringify(this.data, null, 2),
-          'utf-8'
-        );
-      } catch (error) {
-        console.error('[ChatPersistenceStore] Error saving store:', error);
-      }
-    }, 100);
   }
 
   /**
@@ -141,24 +118,29 @@ export class ChatPersistenceStore {
   async saveConversation(chatInfo) {
     await this.init();
 
-    const existing = this.data.conversations[chatInfo.id];
+    const now = Date.now();
+    const existing = this.db.prepare('SELECT createdAt FROM conversations WHERE id = ?').get(chatInfo.id);
 
-    this.data.conversations[chatInfo.id] = {
-      id: chatInfo.id,
-      tool: chatInfo.tool,
-      topic: chatInfo.topic,
-      model: chatInfo.model || null,
-      mode: chatInfo.mode,
-      projectPath: chatInfo.projectPath,
-      status: chatInfo.status,
-      createdAt: existing?.createdAt || chatInfo.createdAt || Date.now(),
-      updatedAt: Date.now(),
-      sessionId: chatInfo.sessionId || null,
-      lastActivity: Date.now()
-    };
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO conversations (id, tool, topic, model, mode, projectPath, status, createdAt, updatedAt, sessionId, lastActivity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    await this.save();
-    return this.data.conversations[chatInfo.id];
+    stmt.run(
+      chatInfo.id,
+      chatInfo.tool,
+      chatInfo.topic,
+      chatInfo.model || null,
+      chatInfo.mode,
+      chatInfo.projectPath,
+      chatInfo.status,
+      existing?.createdAt || chatInfo.createdAt || now,
+      now,
+      chatInfo.sessionId || null,
+      now
+    );
+
+    return this.getConversation(chatInfo.id);
   }
 
   /**
@@ -166,7 +148,8 @@ export class ChatPersistenceStore {
    */
   async getConversation(conversationId) {
     await this.init();
-    return this.data.conversations[conversationId] || null;
+    const stmt = this.db.prepare('SELECT * FROM conversations WHERE id = ?');
+    return stmt.get(conversationId) || null;
   }
 
   /**
@@ -174,13 +157,15 @@ export class ChatPersistenceStore {
    */
   async getAllConversations(projectPath = null) {
     await this.init();
-    const conversations = Object.values(this.data.conversations);
 
+    let stmt;
     if (projectPath) {
-      return conversations.filter(conv => conv.projectPath === projectPath);
+      stmt = this.db.prepare('SELECT * FROM conversations WHERE projectPath = ? ORDER BY lastActivity DESC');
+      return stmt.all(projectPath);
+    } else {
+      stmt = this.db.prepare('SELECT * FROM conversations ORDER BY lastActivity DESC');
+      return stmt.all();
     }
-
-    return conversations;
   }
 
   /**
@@ -189,52 +174,79 @@ export class ChatPersistenceStore {
   async updateConversationStatus(conversationId, status) {
     await this.init();
 
-    if (!this.data.conversations[conversationId]) {
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE conversations
+      SET status = ?, updatedAt = ?, lastActivity = ?
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(status, now, now, conversationId);
+
+    if (result.changes === 0) {
       return null;
     }
 
-    this.data.conversations[conversationId].status = status;
-    this.data.conversations[conversationId].updatedAt = Date.now();
-    this.data.conversations[conversationId].lastActivity = Date.now();
-
-    await this.save();
-    return this.data.conversations[conversationId];
+    return this.getConversation(conversationId);
   }
 
   /**
-   * Save a message (only complete messages, not partial/streaming)
+   * Update conversation topic
+   */
+  async updateConversationTopic(conversationId, newTopic) {
+    await this.init();
+
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE conversations
+      SET topic = ?, updatedAt = ?, lastActivity = ?
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(newTopic, now, now, conversationId);
+
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return this.getConversation(conversationId);
+  }
+
+  /**
+   * Save a message (saves ALL messages including partial/streaming)
    */
   async saveMessage(conversationId, contentBlock) {
     await this.init();
 
-    // Skip partial/streaming messages
-    if (contentBlock.isPartial) {
-      return;
+    // Store additional fields as JSON metadata
+    const metadata = {};
+    const knownFields = ['id', 'conversationId', 'type', 'role', 'content', 'timestamp', 'isPartial', 'toolId', 'toolName', 'isError'];
+
+    for (const key in contentBlock) {
+      if (!knownFields.includes(key)) {
+        metadata[key] = contentBlock[key];
+      }
     }
 
-    // Ensure messages array exists for this chat
-    if (!this.data.messages[conversationId]) {
-      this.data.messages[conversationId] = [];
-    }
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO messages (id, conversationId, type, role, content, timestamp, isPartial, toolId, toolName, isError, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    // Check if message already exists by ID
-    const existingIndex = this.data.messages[conversationId].findIndex(m => m.id === contentBlock.id);
+    stmt.run(
+      contentBlock.id,
+      conversationId,
+      contentBlock.type,
+      contentBlock.role || null,
+      contentBlock.content || null,
+      contentBlock.timestamp || Date.now(),
+      contentBlock.isPartial ? 1 : 0,
+      contentBlock.toolId || null,
+      contentBlock.toolName || null,
+      contentBlock.isError ? 1 : 0,
+      Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null
+    );
 
-    if (existingIndex >= 0) {
-      // Update existing message
-      this.data.messages[conversationId][existingIndex] = {
-        ...this.data.messages[conversationId][existingIndex],
-        ...contentBlock
-      };
-    } else {
-      // Add new message
-      this.data.messages[conversationId].push({
-        ...contentBlock,
-        conversationId
-      });
-    }
-
-    await this.save();
     return contentBlock;
   }
 
@@ -243,13 +255,56 @@ export class ChatPersistenceStore {
    */
   async getMessages(conversationId, limit = null) {
     await this.init();
-    const messages = this.data.messages[conversationId] || [];
 
+    let stmt;
     if (limit && limit > 0) {
-      return messages.slice(-limit);
+      stmt = this.db.prepare(`
+        SELECT * FROM messages
+        WHERE conversationId = ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `);
+      const messages = stmt.all(conversationId, limit);
+      return messages.reverse().map(this._deserializeMessage);
+    } else {
+      stmt = this.db.prepare(`
+        SELECT * FROM messages
+        WHERE conversationId = ?
+        ORDER BY timestamp ASC
+      `);
+      return stmt.all(conversationId).map(this._deserializeMessage);
+    }
+  }
+
+  /**
+   * Deserialize a message from database format
+   */
+  _deserializeMessage(row) {
+    const message = {
+      id: row.id,
+      conversationId: row.conversationId,
+      type: row.type,
+      timestamp: row.timestamp,
+      isPartial: row.isPartial === 1,
+    };
+
+    if (row.role) message.role = row.role;
+    if (row.content) message.content = row.content;
+    if (row.toolId) message.toolId = row.toolId;
+    if (row.toolName) message.toolName = row.toolName;
+    if (row.isError === 1) message.isError = true;
+
+    // Merge in metadata
+    if (row.metadata) {
+      try {
+        const metadata = JSON.parse(row.metadata);
+        Object.assign(message, metadata);
+      } catch (err) {
+        console.error('[ChatPersistenceStore] Failed to parse metadata:', err);
+      }
     }
 
-    return messages;
+    return message;
   }
 
   /**
@@ -258,10 +313,9 @@ export class ChatPersistenceStore {
   async deleteConversation(conversationId) {
     await this.init();
 
-    delete this.data.conversations[conversationId];
-    delete this.data.messages[conversationId];
-
-    await this.save();
+    // Messages are deleted automatically via CASCADE
+    const stmt = this.db.prepare('DELETE FROM conversations WHERE id = ?');
+    stmt.run(conversationId);
   }
 
   /**
@@ -270,9 +324,12 @@ export class ChatPersistenceStore {
   async getResumableChats() {
     await this.init();
 
-    return Object.values(this.data.conversations)
-      .filter(conv => conv.status === 'suspended' || conv.status === 'created')
-      .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversations
+      WHERE status IN ('suspended', 'created')
+      ORDER BY lastActivity DESC
+    `);
+    return stmt.all();
   }
 
   /**
@@ -281,19 +338,17 @@ export class ChatPersistenceStore {
   async suspendAllActiveChats() {
     await this.init();
 
-    let count = 0;
-    for (const conversationId in this.data.conversations) {
-      const conv = this.data.conversations[conversationId];
-      if (conv.status === 'running' || conv.status === 'created') {
-        conv.status = 'suspended';
-        conv.updatedAt = Date.now();
-        conv.lastActivity = Date.now();
-        count++;
-      }
-    }
+    const now = Date.now();
+    const stmt = this.db.prepare(`
+      UPDATE conversations
+      SET status = 'suspended', updatedAt = ?, lastActivity = ?
+      WHERE status IN ('running', 'created')
+    `);
+
+    const result = stmt.run(now, now);
+    const count = result.changes;
 
     if (count > 0) {
-      await this.save();
       console.log(`[ChatPersistenceStore] Suspended ${count} active chats`);
     }
 
@@ -306,16 +361,12 @@ export class ChatPersistenceStore {
   async getStats() {
     await this.init();
 
-    const conversationCount = Object.keys(this.data.conversations).length;
-    let totalMessages = 0;
-
-    for (const conversationId in this.data.messages) {
-      totalMessages += this.data.messages[conversationId].length;
-    }
+    const convCount = this.db.prepare('SELECT COUNT(*) as count FROM conversations').get();
+    const msgCount = this.db.prepare('SELECT COUNT(*) as count FROM messages').get();
 
     return {
-      conversationCount,
-      totalMessages,
+      conversationCount: convCount.count,
+      totalMessages: msgCount.count,
       retentionDays: this.retentionDays,
       maxConversations: this.maxConversations
     };
@@ -327,48 +378,47 @@ export class ChatPersistenceStore {
   async cleanup() {
     await this.init();
 
-    const conversations = Object.values(this.data.conversations);
-    if (conversations.length === 0) return 0;
-
     const now = Date.now();
     const retentionMs = this.retentionDays * 24 * 60 * 60 * 1000;
     const cutoffTime = now - retentionMs;
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
     let deletedCount = 0;
-    const toDelete = [];
 
-    // Find conversations to delete based on age and ended status
-    for (const conv of conversations) {
-      // Delete ended chats older than 7 days
-      if (conv.status === 'ended' && conv.updatedAt < (now - 7 * 24 * 60 * 60 * 1000)) {
-        toDelete.push(conv.id);
-      }
-      // Delete any chat older than retention period
-      else if (conv.lastActivity < cutoffTime) {
-        toDelete.push(conv.id);
-      }
-    }
+    // Delete ended chats older than 7 days
+    const deleteEnded = this.db.prepare(`
+      DELETE FROM conversations
+      WHERE status = 'ended' AND updatedAt < ?
+    `);
+    deletedCount += deleteEnded.run(sevenDaysAgo).changes;
+
+    // Delete any chat older than retention period
+    const deleteOld = this.db.prepare(`
+      DELETE FROM conversations
+      WHERE lastActivity < ?
+    `);
+    deletedCount += deleteOld.run(cutoffTime).changes;
 
     // If still over max limit, delete oldest conversations
-    if (conversations.length - toDelete.length > this.maxConversations) {
-      const remaining = conversations.filter(c => !toDelete.includes(c.id));
-      remaining.sort((a, b) => a.lastActivity - b.lastActivity);
+    const count = this.db.prepare('SELECT COUNT(*) as count FROM conversations').get();
+    if (count.count > this.maxConversations) {
+      const excess = count.count - this.maxConversations;
 
-      const excess = remaining.length - this.maxConversations;
-      for (let i = 0; i < excess; i++) {
-        toDelete.push(remaining[i].id);
+      // Get IDs of oldest conversations to delete
+      const oldestIds = this.db.prepare(`
+        SELECT id FROM conversations
+        ORDER BY lastActivity ASC
+        LIMIT ?
+      `).all(excess);
+
+      const deleteStmt = this.db.prepare('DELETE FROM conversations WHERE id = ?');
+      for (const row of oldestIds) {
+        deleteStmt.run(row.id);
+        deletedCount++;
       }
-    }
-
-    // Delete conversations and their messages
-    for (const conversationId of toDelete) {
-      delete this.data.conversations[conversationId];
-      delete this.data.messages[conversationId];
-      deletedCount++;
     }
 
     if (deletedCount > 0) {
-      await this.save();
       console.log(`[ChatPersistenceStore] Cleaned up ${deletedCount} old conversations`);
     }
 
@@ -401,6 +451,16 @@ export class ChatPersistenceStore {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+  }
+
+  /**
+   * Close the database connection
+   */
+  close() {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
     }
   }
 }

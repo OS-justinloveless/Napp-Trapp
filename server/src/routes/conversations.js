@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { chatProcessManager } from '../utils/ChatProcessManager.js';
+import { ChatPersistenceStore } from '../utils/ChatPersistenceStore.js';
 import { ProjectManager } from '../utils/ProjectManager.js';
 import { getSupportedTools, checkAllToolsAvailability } from '../utils/CLIAdapter.js';
 import { logger } from '../utils/LogManager.js';
 
 const router = Router();
 const projectManager = new ProjectManager();
+const persistenceStore = ChatPersistenceStore.getInstance();
 
 /**
  * Conversations API - AI Chat Sessions
@@ -31,11 +33,11 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // List chats from ChatProcessManager
-    const chats = chatProcessManager.listChats(resolvedProjectPath);
+    // Get chats from persistence store (includes all conversations, even inactive ones)
+    const persistedChats = await persistenceStore.getAllConversations(resolvedProjectPath);
 
     // Format for API response
-    const formattedChats = chats.map(chat => ({
+    const formattedChats = persistedChats.map(chat => ({
       id: chat.id,
       conversationId: chat.id,
       tool: chat.tool,
@@ -45,6 +47,8 @@ router.get('/', async (req, res) => {
       projectPath: chat.projectPath,
       status: chat.status,
       createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+      lastActivity: chat.lastActivity,
       type: 'chat',
       title: `${chat.tool}: ${chat.topic}`,
       timestamp: chat.createdAt,
@@ -90,12 +94,109 @@ router.get('/tools', async (req, res) => {
   }
 });
 
+// Update conversation topic
+router.patch('/:conversationId', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { topic } = req.body;
+
+    console.log(`[PATCH /:conversationId] Updating topic for conversation: ${conversationId}`);
+    console.log(`[PATCH /:conversationId] New topic: ${topic}`);
+
+    if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Invalid topic',
+        details: 'Topic must be a non-empty string'
+      });
+    }
+
+    const trimmedTopic = topic.trim();
+
+    // Check if conversation exists in persistence store or in-memory
+    let conversation = await persistenceStore.getConversation(conversationId);
+    console.log(`[PATCH /:conversationId] Found conversation in DB:`, conversation ? 'YES' : 'NO');
+
+    // If not in persistence store, check in-memory and save it
+    if (!conversation) {
+      const inMemoryChat = chatProcessManager.getChat(conversationId);
+      console.log(`[PATCH /:conversationId] Found conversation in memory:`, inMemoryChat ? 'YES' : 'NO');
+
+      if (!inMemoryChat) {
+        return res.status(404).json({ error: 'Chat not found' });
+      }
+
+      // Save the in-memory chat to persistence store
+      conversation = await persistenceStore.saveConversation({
+        id: inMemoryChat.id,
+        tool: inMemoryChat.tool,
+        topic: inMemoryChat.topic,
+        model: inMemoryChat.model,
+        mode: inMemoryChat.mode,
+        projectPath: inMemoryChat.projectPath,
+        status: inMemoryChat.status,
+        createdAt: inMemoryChat.createdAt,
+        sessionId: inMemoryChat.sessionId || null,
+      });
+      console.log(`[PATCH /:conversationId] Saved in-memory chat to DB`);
+    }
+
+    // Update in persistence store
+    const updatedConversation = await persistenceStore.updateConversationTopic(conversationId, trimmedTopic);
+
+    if (!updatedConversation) {
+      return res.status(500).json({ error: 'Failed to update topic' });
+    }
+
+    // Update in-memory chat if it exists
+    const inMemoryChat = chatProcessManager.getChat(conversationId);
+    if (inMemoryChat) {
+      inMemoryChat.topic = trimmedTopic;
+    }
+
+    logger.info('Chat', 'Topic updated', {
+      conversationId,
+      oldTopic: conversation.topic,
+      newTopic: trimmedTopic
+    });
+
+    res.json({
+      success: true,
+      conversationId,
+      topic: trimmedTopic,
+      updatedAt: updatedConversation.updatedAt,
+      message: 'Topic updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating chat topic:', error);
+    res.status(500).json({ error: 'Failed to update chat topic' });
+  }
+});
+
 // Get specific chat info
 router.get('/:conversationId', async (req, res) => {
   try {
     const { conversationId } = req.params;
 
-    const chatInfo = chatProcessManager.getChat(conversationId);
+    // Try to get from persistence store first
+    let chatInfo = await persistenceStore.getConversation(conversationId);
+
+    // If not in persistence store, check in-memory
+    if (!chatInfo) {
+      const inMemoryChat = chatProcessManager.getChat(conversationId);
+      if (inMemoryChat) {
+        chatInfo = {
+          id: inMemoryChat.id,
+          tool: inMemoryChat.tool,
+          topic: inMemoryChat.topic,
+          model: inMemoryChat.model,
+          mode: inMemoryChat.mode,
+          projectPath: inMemoryChat.projectPath,
+          status: inMemoryChat.status,
+          createdAt: inMemoryChat.createdAt,
+          pid: inMemoryChat.pid,
+        };
+      }
+    }
 
     if (!chatInfo) {
       return res.status(404).json({ error: 'Chat not found' });
@@ -112,6 +213,8 @@ router.get('/:conversationId', async (req, res) => {
         projectPath: chatInfo.projectPath,
         status: chatInfo.status,
         createdAt: chatInfo.createdAt,
+        updatedAt: chatInfo.updatedAt,
+        lastActivity: chatInfo.lastActivity,
         pid: chatInfo.pid,
         type: 'chat',
         title: `${chatInfo.tool}: ${chatInfo.topic}`
@@ -238,27 +341,35 @@ router.delete('/:conversationId', async (req, res) => {
   try {
     const { conversationId } = req.params;
 
+    // Check both in-memory and persistence store
     const chatInfo = chatProcessManager.getChat(conversationId);
+    const persistedChat = await persistenceStore.getConversation(conversationId);
 
-    if (!chatInfo) {
+    if (!chatInfo && !persistedChat) {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    await chatProcessManager.closeChat(conversationId);
+    // Close the in-memory process if it exists
+    if (chatInfo) {
+      await chatProcessManager.closeChat(conversationId);
+    }
 
-    logger.info('Chat', 'Chat closed', {
+    // Delete from persistence store (removes conversation and all messages via CASCADE)
+    await persistenceStore.deleteConversation(conversationId);
+
+    logger.info('Chat', 'Chat deleted', {
       conversationId,
-      tool: chatInfo.tool
+      tool: chatInfo?.tool || persistedChat?.tool
     });
 
     res.json({
       success: true,
       conversationId,
-      message: 'Chat closed'
+      message: 'Chat deleted'
     });
   } catch (error) {
-    console.error('Error closing chat:', error);
-    res.status(500).json({ error: 'Failed to close chat' });
+    console.error('Error deleting chat:', error);
+    res.status(500).json({ error: 'Failed to delete chat' });
   }
 });
 
@@ -266,17 +377,32 @@ router.delete('/:conversationId', async (req, res) => {
 router.get('/:conversationId/messages', async (req, res) => {
   try {
     const { conversationId } = req.params;
+    const { limit, includePartial } = req.query;
 
-    if (!chatProcessManager.hasChat(conversationId)) {
+    // Check if conversation exists in persistence store or in-memory
+    const persistedConv = await persistenceStore.getConversation(conversationId);
+    const inMemory = chatProcessManager.hasChat(conversationId);
+
+    if (!persistedConv && !inMemory) {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    const messages = chatProcessManager.getBufferedMessages(conversationId);
+    // Get all messages from persistence store (includes everything, even partial messages)
+    let messages = await persistenceStore.getMessages(
+      conversationId,
+      limit ? parseInt(limit) : null
+    );
+
+    // Filter out partial messages unless explicitly requested
+    if (includePartial !== 'true') {
+      messages = messages.filter(msg => !msg.isPartial);
+    }
 
     res.json({
       conversationId,
       messages,
-      total: messages.length
+      total: messages.length,
+      source: 'persistence'
     });
   } catch (error) {
     console.error('Error fetching chat messages:', error);

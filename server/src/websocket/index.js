@@ -5,6 +5,7 @@ import fs from 'fs';
 import { ptyManager, tmuxManager } from '../routes/terminals.js';
 import { LogManager } from '../utils/LogManager.js';
 import { chatProcessManager } from '../utils/ChatProcessManager.js';
+import { ChatPersistenceStore } from '../utils/ChatPersistenceStore.js';
 
 const logger = LogManager.getInstance();
 const tmuxSubscribers = new Map(); // "sessionName:windowIndex" -> Set of clientIds
@@ -1023,15 +1024,44 @@ async function handleChatAttach(clientId, ws, message) {
       message: 'Attached to chat session'
     }));
 
-    // Send buffered messages (conversation history)
-    const bufferedMessages = attachResult.bufferedMessages || [];
-    if (bufferedMessages.length > 0) {
-      ws.send(JSON.stringify({
-        type: 'chatHistory',
-        conversationId,
-        messages: bufferedMessages
-      }));
-      console.log(`[WS] Sent ${bufferedMessages.length} buffered messages to client ${clientId}`);
+    // Send conversation history from persistence store (consolidated, non-partial messages)
+    const persistenceStore = ChatPersistenceStore.getInstance();
+    try {
+      const persistedMessages = await persistenceStore.getMessages(conversationId);
+      // Filter to only consolidated (non-partial) messages for clean history
+      const consolidatedMessages = persistedMessages.filter(m => !m.isPartial);
+
+      if (consolidatedMessages.length > 0) {
+        ws.send(JSON.stringify({
+          type: 'chatHistory',
+          conversationId,
+          messages: consolidatedMessages
+        }));
+        console.log(`[WS] Sent ${consolidatedMessages.length} consolidated messages from persistence to client ${clientId}`);
+      } else {
+        // Fallback to in-memory buffer if no consolidated messages exist yet
+        const bufferedMessages = attachResult.bufferedMessages || [];
+        if (bufferedMessages.length > 0) {
+          ws.send(JSON.stringify({
+            type: 'chatHistory',
+            conversationId,
+            messages: bufferedMessages
+          }));
+          console.log(`[WS] Sent ${bufferedMessages.length} buffered messages (fallback) to client ${clientId}`);
+        }
+      }
+    } catch (persistErr) {
+      console.error(`[WS] Failed to load persisted messages, falling back to buffer:`, persistErr);
+      // Fallback to in-memory buffer
+      const bufferedMessages = attachResult.bufferedMessages || [];
+      if (bufferedMessages.length > 0) {
+        ws.send(JSON.stringify({
+          type: 'chatHistory',
+          conversationId,
+          messages: bufferedMessages
+        }));
+        console.log(`[WS] Sent ${bufferedMessages.length} buffered messages (fallback) to client ${clientId}`);
+      }
     }
 
     console.log(`Client ${clientId} attached to chat ${conversationId} (tool: ${chatInfo?.tool})`);

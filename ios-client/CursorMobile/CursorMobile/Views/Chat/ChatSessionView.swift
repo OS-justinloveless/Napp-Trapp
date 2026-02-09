@@ -24,9 +24,22 @@ struct ChatSessionView: View {
     // UI state
     @State private var error: String?
     @State private var scrollToBottom = false
+    @State private var isEditingTopic = false
+    @State private var editedTopic = ""
+    @State private var chatTopic: String
 
     // Approval state - tracks which approval blocks have been responded to
     @State private var respondedApprovalIds: Set<String> = []
+
+    // Deduplication - tracks block IDs already loaded from persisted history
+    @State private var loadedHistoryBlockIds: Set<String> = []
+
+    init(chat: ChatWindow, project: Project, isActive: Binding<Bool>) {
+        self.chat = chat
+        self.project = project
+        self._isActive = isActive
+        self._chatTopic = State(initialValue: chat.topic ?? "")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,16 +59,18 @@ struct ChatSessionView: View {
                 projectId: project.id
             )
         }
-        .navigationTitle(chat.displayTitle)
+        .navigationTitle(chatTopic.isEmpty ? chat.displayTitle : chatTopic)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 toolbarButtons
             }
         }
+        .sheet(isPresented: $isEditingTopic) {
+            editTopicSheet
+        }
         .onAppear {
             isActive = true
-            attachToChat()
 
             // Show initial message locally if provided (server sends it to the CLI)
             if let prompt = chatManager.consumePendingInitialMessage(for: chat.effectiveTerminalId) {
@@ -76,6 +91,10 @@ struct ChatSessionView: View {
                 messages.append(userMessage)
                 isStreaming = true
                 scrollToBottom = true
+                attachToChat()
+            } else {
+                // Load persisted history first, then attach for real-time updates
+                loadPersistedHistory()
             }
         }
         .onDisappear {
@@ -91,12 +110,45 @@ struct ChatSessionView: View {
 
     private var toolbarButtons: some View {
         HStack(spacing: 12) {
+            Button {
+                editedTopic = chatTopic
+                isEditingTopic = true
+            } label: {
+                Image(systemName: "pencil")
+            }
+
             if isStreaming {
                 Button {
                     cancelChat()
                 } label: {
                     Image(systemName: "stop.circle.fill")
                         .foregroundColor(.red)
+                }
+            }
+        }
+    }
+
+    private var editTopicSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Chat Topic")) {
+                    TextField("Enter topic name", text: $editedTopic)
+                        .textInputAutocapitalization(.sentences)
+                }
+            }
+            .navigationTitle("Edit Topic")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isEditingTopic = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveTopicChange()
+                    }
+                    .disabled(editedTopic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -173,6 +225,28 @@ struct ChatSessionView: View {
         allMessages.flatMap { $0.blocks }
     }
 
+    // MARK: - History Loading
+
+    /// Load persisted message history from the REST API, then attach for real-time updates
+    private func loadPersistedHistory() {
+        Task {
+            let history = await chatManager.fetchChatHistory(conversationId: chat.effectiveTerminalId)
+            if !history.isEmpty {
+                print("[ChatSessionView] Loaded \(history.count) persisted messages for \(chat.effectiveTerminalId)")
+                messages = history
+                // Track all block IDs we loaded so we can deduplicate WebSocket history
+                for msg in history {
+                    for block in msg.blocks {
+                        loadedHistoryBlockIds.insert(block.id)
+                    }
+                }
+                scrollToBottom = true
+            }
+            // After loading history, attach via WebSocket for real-time updates
+            attachToChat()
+        }
+    }
+
     // MARK: - WebSocket Operations
 
     private func attachToChat() {
@@ -194,7 +268,13 @@ struct ChatSessionView: View {
             },
             onError: { errorMsg in
                 print("[ChatSessionView] Error: \(errorMsg)")
-                self.error = errorMsg
+                // Only show error popup if we don't already have persisted messages loaded
+                // (if we have history, the user can still see it despite the attach error)
+                if messages.isEmpty {
+                    self.error = errorMsg
+                } else {
+                    print("[ChatSessionView] Suppressing error popup since persisted history is loaded")
+                }
             }
         )
         isAttached = true
@@ -209,6 +289,11 @@ struct ChatSessionView: View {
 
     private func handleContentBlocks(_ blocks: [ChatContentBlock]) {
         for block in blocks {
+            // Skip blocks already loaded from persisted history (deduplication)
+            if loadedHistoryBlockIds.contains(block.id) {
+                continue
+            }
+
             // Handle session end - finalize current message
             if block.type == .sessionEnd {
                 print("[ChatSessionView] session_end received, currentAssistantMessage has \(currentAssistantMessage?.blocks.count ?? 0) blocks")
@@ -461,6 +546,34 @@ struct ChatSessionView: View {
 
     private func sendInput(input: String) {
         chatManager.sendInput(chat.effectiveTerminalId, input: input)
+    }
+
+    private func saveTopicChange() {
+        let newTopic = editedTopic.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newTopic.isEmpty else { return }
+
+        print("[ChatSessionView] saveTopicChange called")
+        print("[ChatSessionView] chat.id: \(chat.id)")
+        print("[ChatSessionView] chat.effectiveTerminalId: \(chat.effectiveTerminalId)")
+        print("[ChatSessionView] chat.topic: \(chat.topic ?? "nil")")
+        print("[ChatSessionView] newTopic: \(newTopic)")
+
+        Task {
+            do {
+                print("[ChatSessionView] Calling chatManager.updateChatTopic")
+                try await chatManager.updateChatTopic(conversationId: chat.effectiveTerminalId, topic: newTopic)
+                print("[ChatSessionView] Topic update succeeded")
+                await MainActor.run {
+                    chatTopic = newTopic
+                    isEditingTopic = false
+                }
+            } catch {
+                print("[ChatSessionView] Topic update failed: \(error)")
+                await MainActor.run {
+                    self.error = "Failed to update topic: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 

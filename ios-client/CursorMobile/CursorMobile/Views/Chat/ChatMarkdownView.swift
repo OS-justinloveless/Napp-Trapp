@@ -94,9 +94,14 @@ struct ChatMarkdownView: View {
     private func renderBlock(_ block: MarkdownBlock) -> some View {
         switch block {
         case .text(let text):
-            // Use full markdown parsing instead of inline-only
+            // Preserve newlines by converting single \n to markdown hard breaks
+            // CommonMark spec: single newlines are treated as spaces unless you use two spaces + newline
+            // We want to preserve all newlines, so we convert them to hard breaks (two spaces + newline)
+            let preservedText = text.replacingOccurrences(of: "\n", with: "  \n")
+
+            // Use full markdown parsing
             if let attributed = try? AttributedString(
-                markdown: text,
+                markdown: preservedText,
                 options: .init(
                     allowsExtendedAttributes: true,
                     interpretedSyntax: .full,
@@ -105,9 +110,13 @@ struct ChatMarkdownView: View {
             ) {
                 Text(attributed)
                     .textSelection(.enabled)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(text)
                     .textSelection(.enabled)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
         case .code(let language, let code):

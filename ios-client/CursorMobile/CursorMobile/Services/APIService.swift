@@ -898,6 +898,30 @@ class APIService {
         }
     }
     
+    /// Fetch chat messages (consolidated, non-partial) for a conversation
+    /// - Parameters:
+    ///   - conversationId: The conversation ID
+    ///   - includePartial: Whether to include partial/streaming messages (default false)
+    /// - Returns: Array of ChatContentBlock messages
+    func getChatMessages(conversationId: String, includePartial: Bool = false) async throws -> [ChatContentBlock] {
+        var queryItems: [URLQueryItem] = []
+        if includePartial {
+            queryItems.append(URLQueryItem(name: "includePartial", value: "true"))
+        }
+        
+        let data = try await makeRequest(
+            endpoint: "/api/conversations/\(conversationId)/messages",
+            queryItems: queryItems.isEmpty ? nil : queryItems
+        )
+        do {
+            let response = try decoder.decode(ChatMessagesResponse.self, from: data)
+            return response.messages
+        } catch {
+            print("[APIService] Failed to decode chat messages: \(error)")
+            throw APIError.decodingError(error)
+        }
+    }
+    
     /// Create a new chat window (tmux window running AI CLI)
     /// - Parameters:
     ///   - projectId: The project ID to create the chat in
@@ -965,6 +989,33 @@ class APIService {
             logAsync(.info, "API", "Chat window deleted", data: ["terminalId": terminalId])
         } catch {
             logAsync(.error, "API", "Failed to delete chat window", data: ["error": error.localizedDescription])
+            throw error
+        }
+    }
+
+    /// Update the topic of a chat window
+    /// - Parameters:
+    ///   - conversationId: The conversation ID to update
+    ///   - topic: The new topic name
+    /// - Returns: Updated conversation info
+    func updateChatTopic(conversationId: String, topic: String) async throws {
+        print("[APIService] updateChatTopic called with conversationId: \(conversationId), topic: \(topic)")
+        logAsync(.info, "API", "Updating chat topic", data: ["conversationId": conversationId, "topic": topic])
+
+        let encodedId = conversationId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversationId
+        print("[APIService] Encoded ID: \(encodedId)")
+        print("[APIService] Making PATCH request to: /api/conversations/\(encodedId)")
+
+        let bodyDict: [String: Any] = ["topic": topic]
+        let body = try JSONSerialization.data(withJSONObject: bodyDict)
+
+        do {
+            let responseData = try await makeRequest(endpoint: "/api/conversations/\(encodedId)", method: "PATCH", body: body)
+            print("[APIService] Chat topic update successful, response size: \(responseData.count) bytes")
+            logAsync(.info, "API", "Chat topic updated", data: ["conversationId": conversationId, "topic": topic])
+        } catch {
+            print("[APIService] Chat topic update failed with error: \(error)")
+            logAsync(.error, "API", "Failed to update chat topic", data: ["error": error.localizedDescription])
             throw error
         }
     }

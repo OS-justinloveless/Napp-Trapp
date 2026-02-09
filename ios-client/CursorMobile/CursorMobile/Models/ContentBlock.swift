@@ -414,6 +414,14 @@ struct ContentBlocksMessage: Codable {
     let isBuffer: Bool?
 }
 
+/// Response from GET /api/conversations/:id/messages
+struct ChatMessagesResponse: Codable {
+    let conversationId: String
+    let messages: [ChatContentBlock]
+    let total: Int
+    let source: String?
+}
+
 // MARK: - Chat Session Events
 
 /// Chat session status event

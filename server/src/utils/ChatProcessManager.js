@@ -26,7 +26,7 @@ class ChatProcessManager extends EventEmitter {
     this.conversationCounter = 0;
 
     // Max messages to buffer per conversation
-    this.maxBufferSize = 100;
+    this.maxBufferSize = 500;
 
     // Initialize persistence store
     this.persistenceStore = ChatPersistenceStore.getInstance();
@@ -375,18 +375,113 @@ class ChatProcessManager extends EventEmitter {
   }
 
   /**
+   * Capture session ID from a CLI event if present, and persist it
+   * so we can use --resume on server restart.
+   */
+  captureSessionId(conversationId, cliEvent) {
+    const sessionId = cliEvent.session_id || cliEvent.sessionId;
+    if (!sessionId) return;
+
+    const chatInfo = this.processes.get(conversationId);
+    if (!chatInfo) return;
+
+    // Only save if we don't already have this session ID
+    if (chatInfo.sessionId === sessionId) return;
+
+    chatInfo.sessionId = sessionId;
+
+    // Rebuild CLI args so future process spawns will use --resume
+    chatInfo.args = this.buildCLIArgs(chatInfo.tool, {
+      model: chatInfo.model,
+      mode: chatInfo.mode,
+      sessionId: sessionId,
+      projectPath: chatInfo.projectPath,
+    });
+
+    // Persist the session ID to the database
+    this.persistenceStore.saveConversation({
+      id: conversationId,
+      tool: chatInfo.tool,
+      topic: chatInfo.topic,
+      model: chatInfo.model,
+      mode: chatInfo.mode,
+      projectPath: chatInfo.projectPath,
+      status: chatInfo.status,
+      createdAt: chatInfo.createdAt,
+      sessionId: sessionId,
+    }).catch(err => {
+      console.error(`[ChatProcessManager] Failed to persist session ID:`, err);
+    });
+
+    console.log(`[ChatProcessManager] Captured session ID for ${conversationId}: ${sessionId}`);
+  }
+
+  /**
    * Transform Claude CLI JSON event to our ContentBlock format
    */
   transformCLIEvent(conversationId, cliEvent) {
     const id = `${cliEvent.type || 'event'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = Date.now();
 
+    // Try to capture session ID from any event that contains one
+    this.captureSessionId(conversationId, cliEvent);
+
     // Handle different Claude CLI event types
     switch (cliEvent.type) {
-      case 'assistant':
-        // Complete assistant message - filter out since we already stream via content_block_delta
-        // This is sent at the end with the full content, but we've already displayed it
+      case 'assistant': {
+        // Complete assistant message - save consolidated version to persistence store
+        // but don't emit as a content block (already streamed via content_block_delta)
+        const chatInfoForAssistant = this.processes.get(conversationId);
+
+        // Skip saving during replay phase (resumed session replaying old messages)
+        if (chatInfoForAssistant?.replayPhase) {
+          console.log(`[ChatProcessManager] Skipping consolidated save for replayed assistant message in ${conversationId}`);
+          return null;
+        }
+
+        const assistantContent = cliEvent.message?.content || cliEvent.content;
+        if (assistantContent && Array.isArray(assistantContent)) {
+          // Extract full text from content blocks
+          const textParts = assistantContent
+            .filter(block => block.type === 'text')
+            .map(block => block.text)
+            .join('');
+
+          if (textParts) {
+            const consolidatedId = `assistant-consolidated-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+            this.persistenceStore.saveMessage(conversationId, {
+              id: consolidatedId,
+              type: 'text',
+              role: 'assistant',
+              content: textParts,
+              timestamp,
+              isPartial: false,
+            }).catch(err => {
+              console.error(`[ChatProcessManager] Failed to save consolidated assistant message:`, err);
+            });
+            console.log(`[ChatProcessManager] Saved consolidated assistant message (${textParts.length} chars) for ${conversationId}`);
+          }
+
+          // Also save tool_use blocks as consolidated entries
+          for (const block of assistantContent) {
+            if (block.type === 'tool_use') {
+              const toolConsolidatedId = `tool-consolidated-${block.id || timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+              this.persistenceStore.saveMessage(conversationId, {
+                id: toolConsolidatedId,
+                type: 'tool_use_start',
+                toolId: block.id,
+                toolName: block.name,
+                content: JSON.stringify(block.input || {}),
+                timestamp,
+                isPartial: false,
+              }).catch(err => {
+                console.error(`[ChatProcessManager] Failed to save consolidated tool_use message:`, err);
+              });
+            }
+          }
+        }
         return null;
+      }
 
       case 'content_block_start': {
         // Start of a content block (text or tool_use)
@@ -550,31 +645,107 @@ class ChatProcessManager extends EventEmitter {
           timestamp,
         };
 
-      // Human/user messages - check if this is a tool result
+      // Human/user messages - check if this is a tool result and save consolidated user messages
       case 'human':
-      case 'user':
+      case 'user': {
+        const chatInfoForUser = this.processes.get(conversationId);
+
         // Check if this contains tool results (nested in message.content)
         const messageContent = cliEvent.message?.content || cliEvent.content;
+        let hasToolResult = false;
+        let toolResultBlock = null;
+
         if (messageContent && Array.isArray(messageContent)) {
-          for (const item of messageContent) {
-            if (item.type === 'tool_result') {
-              console.log(`[ChatProcessManager] FOUND TOOL RESULT:`, item.tool_use_id, `content length: ${item.content?.length || 0}`);
-              return {
-                id: item.tool_use_id || id,
-                type: 'tool_use_result',
-                conversationId,
-                toolId: item.tool_use_id,
-                content: typeof item.content === 'string'
-                  ? item.content
-                  : JSON.stringify(item.content),
-                isError: item.is_error,
+          // Only save consolidated messages if NOT in replay phase
+          if (!chatInfoForUser?.replayPhase) {
+            // Save consolidated user text messages to persistence store
+            const userTextParts = messageContent
+              .filter(item => item.type === 'text')
+              .map(item => item.text)
+              .join('');
+
+            if (userTextParts) {
+              const userConsolidatedId = `user-consolidated-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+              this.persistenceStore.saveMessage(conversationId, {
+                id: userConsolidatedId,
+                type: 'text',
+                role: 'user',
+                content: userTextParts,
                 timestamp,
-              };
+                isPartial: false,
+              }).catch(err => {
+                console.error(`[ChatProcessManager] Failed to save consolidated user message:`, err);
+              });
+              console.log(`[ChatProcessManager] Saved consolidated user message (${userTextParts.length} chars) for ${conversationId}`);
+            }
+
+            // Also save tool results as consolidated entries
+            for (const item of messageContent) {
+              if (item.type === 'tool_result') {
+                console.log(`[ChatProcessManager] FOUND TOOL RESULT:`, item.tool_use_id, `content length: ${item.content?.length || 0}`);
+
+                // Save consolidated tool result
+                const toolResultConsolidatedId = `tool-result-consolidated-${item.tool_use_id || timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+                this.persistenceStore.saveMessage(conversationId, {
+                  id: toolResultConsolidatedId,
+                  type: 'tool_use_result',
+                  toolId: item.tool_use_id,
+                  content: typeof item.content === 'string'
+                    ? item.content
+                    : JSON.stringify(item.content),
+                  isError: item.is_error || false,
+                  timestamp,
+                  isPartial: false,
+                }).catch(err => {
+                  console.error(`[ChatProcessManager] Failed to save consolidated tool result:`, err);
+                });
+
+                if (!hasToolResult) {
+                  hasToolResult = true;
+                  toolResultBlock = {
+                    id: item.tool_use_id || id,
+                    type: 'tool_use_result',
+                    conversationId,
+                    toolId: item.tool_use_id,
+                    content: typeof item.content === 'string'
+                      ? item.content
+                      : JSON.stringify(item.content),
+                    isError: item.is_error,
+                    timestamp,
+                  };
+                }
+              }
+            }
+          } else {
+            console.log(`[ChatProcessManager] Skipping consolidated save for replayed user message in ${conversationId}`);
+
+            // Still extract tool results for live streaming even during replay
+            for (const item of messageContent) {
+              if (item.type === 'tool_result' && !hasToolResult) {
+                hasToolResult = true;
+                toolResultBlock = {
+                  id: item.tool_use_id || id,
+                  type: 'tool_use_result',
+                  conversationId,
+                  toolId: item.tool_use_id,
+                  content: typeof item.content === 'string'
+                    ? item.content
+                    : JSON.stringify(item.content),
+                  isError: item.is_error,
+                  timestamp,
+                };
+              }
             }
           }
         }
-        // Filter out regular user messages (replay of user input)
+
+        // Return the first tool result block for live streaming (if any)
+        if (hasToolResult && toolResultBlock) {
+          return toolResultBlock;
+        }
+        // Filter out regular user messages (replay of user input) from live streaming
         return null;
+      }
 
       // System events (hooks, init, etc.) - check for tool results and permission requests
       case 'system':
@@ -734,12 +905,10 @@ class ChatProcessManager extends EventEmitter {
       }
     }
 
-    // Save complete (non-partial) messages to persistence store
-    if (!message.isPartial) {
-      this.persistenceStore.saveMessage(conversationId, message).catch(err => {
-        console.error(`[ChatProcessManager] Failed to save message to persistence:`, err);
-      });
-    }
+    // Save ALL messages to persistence store (including partial/streaming)
+    this.persistenceStore.saveMessage(conversationId, message).catch(err => {
+      console.error(`[ChatProcessManager] Failed to save message to persistence:`, err);
+    });
   }
 
   /**
@@ -794,6 +963,13 @@ class ChatProcessManager extends EventEmitter {
     }
 
     console.log(`[ChatProcessManager] Sending message to ${conversationId}: ${content.substring(0, 50)}...`);
+
+    // End replay phase -- user is sending a new message, so any subsequent
+    // assistant/user events from the CLI are NEW, not replayed history
+    if (chatInfo.replayPhase) {
+      console.log(`[ChatProcessManager] Ending replay phase for ${conversationId} (user sent new message)`);
+      chatInfo.replayPhase = false;
+    }
 
     // For stream-json input format, send JSON object with message wrapper
     // Claude CLI expects: {"type": "user", "message": {"role": "user", "content": [...]}}
@@ -1264,7 +1440,7 @@ class ChatProcessManager extends EventEmitter {
 
   /**
    * Load persisted conversations on startup
-   * This restores conversation metadata but doesn't restart processes
+   * Restores conversation metadata into this.processes so they can be re-attached
    */
   async loadPersistedConversations() {
     try {
@@ -1280,10 +1456,57 @@ class ChatProcessManager extends EventEmitter {
         // Mark running conversations as suspended (they're not actually running after restart)
         if (conv.status === 'running' || conv.status === 'created') {
           await this.persistenceStore.updateConversationStatus(conv.id, 'suspended');
+          conv.status = 'suspended';
         }
 
-        console.log(`[ChatProcessManager] Loaded conversation ${conv.id} (${conv.tool}, status: ${conv.status})`);
+        // Restore conversation into the in-memory processes Map so it can be re-attached
+        try {
+          const adapter = getCLIAdapter(conv.tool);
+          const cliPath = adapter ? adapter.getExecutable() : null;
+
+          if (cliPath) {
+            const args = this.buildCLIArgs(conv.tool, {
+              model: conv.model,
+              mode: conv.mode,
+              sessionId: conv.sessionId,
+              projectPath: conv.projectPath,
+            });
+
+            const chatInfo = {
+              id: conv.id,
+              tool: conv.tool,
+              cliPath,
+              args,
+              projectPath: conv.projectPath,
+              topic: conv.topic,
+              model: conv.model,
+              mode: conv.mode,
+              sessionId: conv.sessionId,
+              initialPrompt: null,
+              createdAt: conv.createdAt,
+              process: null,
+              status: conv.status,
+              // Mark as in replay phase so we don't duplicate consolidated messages
+              // when the CLI replays previous turns via --resume
+              replayPhase: !!conv.sessionId,
+            };
+
+            this.processes.set(conv.id, chatInfo);
+            this.outputHandlers.set(conv.id, new Set());
+            this.messageBuffers.set(conv.id, []);
+            this.contentBlockIds.set(conv.id, new Map());
+            this.pendingPermissions.set(conv.id, new Map());
+
+            console.log(`[ChatProcessManager] Restored conversation ${conv.id} (${conv.tool}, status: ${conv.status}, sessionId: ${conv.sessionId || 'none'})`);
+          } else {
+            console.warn(`[ChatProcessManager] Cannot restore ${conv.id}: CLI not found for tool ${conv.tool}`);
+          }
+        } catch (restoreErr) {
+          console.error(`[ChatProcessManager] Failed to restore conversation ${conv.id}:`, restoreErr);
+        }
       }
+
+      console.log(`[ChatProcessManager] Restored ${this.processes.size} conversations into memory`);
     } catch (err) {
       console.error('[ChatProcessManager] Failed to load persisted conversations:', err);
     }
@@ -1313,6 +1536,9 @@ class ChatProcessManager extends EventEmitter {
 
     // Stop auto-cleanup timer
     this.persistenceStore.stopAutoCleanup();
+
+    // Close database connection
+    this.persistenceStore.close();
   }
 }
 
