@@ -23,6 +23,7 @@ class ChatProcessManager extends EventEmitter {
     this.messageBuffers = new Map();   // conversationId -> message history
     this.contentBlockIds = new Map();  // conversationId -> Map<index, blockId> for tracking streaming blocks
     this.pendingPermissions = new Map(); // conversationId -> Map<toolUseId, denial info> for permission denials awaiting user approval
+    this.pendingNotifications = new Map(); // conversationId -> Array<session_end events> for delivery when client reconnects
     this.conversationCounter = 0;
 
     // Max messages to buffer per conversation
@@ -235,6 +236,12 @@ class ChatProcessManager extends EventEmitter {
     chatInfo.status = 'running';
     chatInfo.pid = childProcess.pid;
 
+    // If resuming a session, mark as replay phase so we don't duplicate
+    // consolidated messages when the CLI replays previous turns via --resume
+    if (chatInfo.sessionId) {
+      chatInfo.replayPhase = true;
+    }
+
     // Update status in persistence store
     await this.persistenceStore.updateConversationStatus(conversationId, 'running').catch(err => {
       console.error(`[ChatProcessManager] Failed to update conversation status:`, err);
@@ -287,6 +294,7 @@ class ChatProcessManager extends EventEmitter {
         conversationId,
         content: `Process ended with code ${code}`,
         timestamp: Date.now(),
+        isTurnComplete: true, // Process exit is a final turn completion
       });
     });
 
@@ -654,6 +662,7 @@ class ChatProcessManager extends EventEmitter {
           conversationId,
           content: cliEvent.stop_reason || 'completed',
           timestamp,
+          isTurnComplete: false, // Intermediate message end, not final turn completion
         };
 
       case 'message_delta':
@@ -882,6 +891,7 @@ class ChatProcessManager extends EventEmitter {
           conversationId,
           content: 'Turn completed',
           timestamp,
+          isTurnComplete: true, // Final turn completion from result event
         };
 
       default:
@@ -937,19 +947,60 @@ class ChatProcessManager extends EventEmitter {
   }
 
   /**
-   * Notify all handlers for a conversation
+   * Notify all handlers for a conversation.
+   * If a session_end event has no handlers to deliver to, store it as a
+   * pending notification so it can be sent when a client reconnects.
    */
   notifyHandlers(conversationId, event) {
     const handlers = this.outputHandlers.get(conversationId);
-    if (handlers) {
+    let delivered = false;
+
+    if (handlers && handlers.size > 0) {
       for (const handler of handlers) {
         try {
           handler(event);
+          delivered = true;
         } catch (err) {
           console.error(`[ChatProcessManager] Handler error:`, err);
         }
       }
     }
+
+    // If this is a session_end event and nobody received it, store it
+    // so a reconnecting client can pick it up later.
+    if (event.type === 'session_end' && !delivered) {
+      // Enrich the event with the chat topic so notifications can display it
+      const chatInfo = this.processes.get(conversationId);
+      const enrichedEvent = {
+        ...event,
+        topic: chatInfo?.topic || null,
+      };
+
+      if (!this.pendingNotifications.has(conversationId)) {
+        this.pendingNotifications.set(conversationId, []);
+      }
+      this.pendingNotifications.get(conversationId).push(enrichedEvent);
+      console.log(`[ChatProcessManager] Stored pending session_end notification for ${conversationId} (topic: ${enrichedEvent.topic || 'none'}, no connected handlers)`);
+    }
+  }
+
+  /**
+   * Get and clear all pending notifications (session_end events that had no
+   * connected handler when they fired). Called when a client reconnects.
+   */
+  getPendingNotifications() {
+    const all = new Map(this.pendingNotifications);
+    this.pendingNotifications.clear();
+    return all;
+  }
+
+  /**
+   * Get and clear pending notifications for a specific conversation.
+   */
+  getPendingNotificationsFor(conversationId) {
+    const pending = this.pendingNotifications.get(conversationId) || [];
+    this.pendingNotifications.delete(conversationId);
+    return pending;
   }
 
   /**
@@ -1319,6 +1370,7 @@ class ChatProcessManager extends EventEmitter {
         conversationId,
         content: 'Turn completed',
         timestamp: Date.now(),
+        isTurnComplete: true, // All permissions resolved, turn is complete
       };
       this.bufferMessage(conversationId, endBlock);
       this.notifyHandlers(conversationId, endBlock);

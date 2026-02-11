@@ -42,6 +42,8 @@
 		F000000000000009 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000009 /* AuthManager.swift */; };
 		F000000000000010 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000010 /* APIService.swift */; };
 		F000000000000011 /* WebSocketManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000011 /* WebSocketManager.swift */; };
+		A27AE3F6361246F6 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27AE3F6361246F7 /* NotificationManager.swift */; };
+		7A69AD280FCB4219 /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E0E3531C93E4AD7 /* BackgroundTaskManager.swift */; };
 		F000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000012 /* LoginView.swift */; };
 		F000000000000013 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000013 /* QRScannerView.swift */; };
 		F000000000000014 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000014 /* ProjectsView.swift */; };
@@ -132,6 +134,8 @@
 		F100000000000009 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		F100000000000010 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		F100000000000011 /* WebSocketManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketManager.swift; sourceTree = "<group>"; };
+		A27AE3F6361246F7 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		9E0E3531C93E4AD7 /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTaskManager.swift; sourceTree = "<group>"; };
 		F100000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		F100000000000013 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		F100000000000014 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
@@ -284,6 +288,8 @@
 				F100000000000009 /* AuthManager.swift */,
 				F100000000000010 /* APIService.swift */,
 				F100000000000011 /* WebSocketManager.swift */,
+				A27AE3F6361246F7 /* NotificationManager.swift */,
+				9E0E3531C93E4AD7 /* BackgroundTaskManager.swift */,
 				F100000000000040 /* CacheManager.swift */,
 				F100000000000041 /* ThemeManager.swift */,
 				F100000000000043 /* SavedHostsManager.swift */,
@@ -513,6 +519,8 @@
 				F000000000000070 /* LogManager.swift in Sources */,
 				F000000000000010 /* APIService.swift in Sources */,
 				F000000000000011 /* WebSocketManager.swift in Sources */,
+				A27AE3F6361246F6 /* NotificationManager.swift in Sources */,
+				7A69AD280FCB4219 /* BackgroundTaskManager.swift in Sources */,
 				F000000000000012 /* LoginView.swift in Sources */,
 				F000000000000013 /* QRScannerView.swift in Sources */,
 				F000000000000014 /* ProjectsView.swift in Sources */,

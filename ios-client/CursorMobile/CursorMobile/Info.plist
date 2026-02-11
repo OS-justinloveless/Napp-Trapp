@@ -80,6 +80,15 @@
 		<key>UIImageName</key>
 		<string>LaunchIcon</string>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.lovelesslabstx.napptrapp.notification-check</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Napp Trapp needs access to your photos to attach images to chat messages.</string>
 	<key>NSCameraUsageDescription</key>

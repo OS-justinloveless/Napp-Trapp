@@ -63,6 +63,7 @@ struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var webSocketManager: WebSocketManager
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var notificationManager: NotificationManager
     
     @State private var systemInfo: SystemInfo?
     @State private var networkInfo: [NetworkInterface] = []
@@ -70,6 +71,7 @@ struct SettingsView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showLogoutConfirmation = false
+    @State private var testNotificationSent = false
     
     // App Icon states (now derived from theme)
     private var currentAppIcon: AppIconOption {
@@ -489,6 +491,80 @@ struct SettingsView: View {
                 } else {
                     Text("Rebuild and reinstall the app on the simulator. The app will restart automatically.")
                 }
+            }
+
+            // Debug Notifications Section
+            Section {
+                Button {
+                    testNotificationSent = false
+                    Task {
+                        // Await permission check BEFORE scheduling
+                        await notificationManager.checkCurrentPermissionStatus()
+                        print("[SettingsView] Permission after check: \(notificationManager.notificationPermissionGranted)")
+                        print("[SettingsView] Authorization status: \(notificationManager.authorizationStatus)")
+
+                        if !notificationManager.notificationPermissionGranted {
+                            // Try requesting permission first
+                            print("[SettingsView] Permission not granted, requesting...")
+                            await notificationManager.requestPermission()
+                        }
+
+                        // Now schedule the notification
+                        print("[SettingsView] Scheduling test notification...")
+                        notificationManager.scheduleNotification(
+                            conversationId: "test-\(UUID().uuidString.prefix(8))",
+                            topic: "Test Chat Conversation"
+                        )
+                        testNotificationSent = true
+                    }
+                } label: {
+                    HStack {
+                        Label("Send Test Notification", systemImage: "bell.badge")
+                        Spacer()
+                    }
+                }
+
+                if testNotificationSent {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Test notification sent! Check banner in ~1 second.")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+
+                HStack {
+                    Label("Permission", systemImage: "lock")
+                    Spacer()
+                    Text(notificationManager.notificationPermissionGranted ? "Granted" : "Denied")
+                        .font(.caption)
+                        .foregroundColor(notificationManager.notificationPermissionGranted ? .green : .orange)
+                }
+
+                HStack {
+                    Label("System Status", systemImage: "gearshape")
+                    Spacer()
+                    Text(notificationManager.authorizationStatus)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Button {
+                    Task {
+                        await notificationManager.checkCurrentPermissionStatus()
+                    }
+                } label: {
+                    HStack {
+                        Label("Refresh Permission Status", systemImage: "arrow.clockwise")
+                        Spacer()
+                    }
+                }
+                .font(.caption)
+            } header: {
+                Text("Debug")
+            } footer: {
+                Text("Test the notification system. The notification will appear as a banner even while the app is open. System Status shows the actual iOS notification setting for this app.")
             }
         }
         .navigationTitle("Settings")

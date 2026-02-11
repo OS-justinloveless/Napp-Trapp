@@ -74,6 +74,10 @@ struct ChatSessionView: View {
         .onAppear {
             isActive = true
 
+            // Notify WebSocketManager of the chat topic for notifications
+            // Use effectiveTerminalId to match the conversationId the server sends in WebSocket events
+            webSocketManager.setChatTopic(chat.effectiveTerminalId, topic: chatTopic)
+
             // Show initial message locally if provided (server sends it to the CLI)
             if let prompt = chatManager.consumePendingInitialMessage(for: chat.effectiveTerminalId) {
                 let userMessage = ParsedMessage(
@@ -303,6 +307,8 @@ struct ChatSessionView: View {
             if block.type == .topicUpdated, let newTopic = block.topic {
                 print("[ChatSessionView] Topic auto-updated to: \(newTopic)")
                 chatTopic = newTopic
+                // Update WebSocketManager with the new topic for notifications
+                webSocketManager.setChatTopic(chat.effectiveTerminalId, topic: newTopic)
                 continue
             }
 
@@ -624,6 +630,8 @@ struct ChatSessionView: View {
                 print("[ChatSessionView] Topic update succeeded")
                 await MainActor.run {
                     chatTopic = newTopic
+                    // Update WebSocketManager with the new topic for notifications
+                    webSocketManager.setChatTopic(chat.effectiveTerminalId, topic: newTopic)
                     isEditingTopic = false
                 }
             } catch {

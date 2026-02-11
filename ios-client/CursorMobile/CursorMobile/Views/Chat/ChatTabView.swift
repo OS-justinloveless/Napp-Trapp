@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatTabView: View {
     let project: Project
     @Binding var isChatSessionActive: Bool
+    @Binding var pendingConversationId: String?
 
     @EnvironmentObject var authManager: AuthManager
     @EnvironmentObject var webSocketManager: WebSocketManager
@@ -36,6 +37,17 @@ struct ChatTabView: View {
             )
             .environmentObject(chatManager)
             .environmentObject(webSocketManager)
+            .onAppear {
+                // Notify WebSocketManager that this conversation is visible
+                // Use effectiveTerminalId to match the conversationId the server sends in WebSocket events
+                webSocketManager.setVisibleConversation(chat.effectiveTerminalId)
+                isChatSessionActive = true
+            }
+            .onDisappear {
+                // Notify WebSocketManager that this conversation is no longer visible
+                webSocketManager.setVisibleConversation(nil)
+                isChatSessionActive = false
+            }
         }
         .sheet(isPresented: $showNewChatSheet) {
             NewChatSheet(project: project) { newChat, initialPrompt in
@@ -58,7 +70,30 @@ struct ChatTabView: View {
                 await chatManager.fetchAgents()
                 await chatManager.fetchModels()
                 await chatManager.fetchChats(projectPath: project.path)
+
+                // After chats are loaded, check if we have a pending deep link to navigate to
+                navigateToPendingConversation()
             }
+        }
+        .onChange(of: pendingConversationId) { _, newId in
+            // If a new pending conversation comes in while we're already visible, navigate immediately
+            if newId != nil {
+                navigateToPendingConversation()
+            }
+        }
+    }
+    /// Navigate to a chat matching the pending conversation ID (from notification deep link)
+    private func navigateToPendingConversation() {
+        guard let conversationId = pendingConversationId else { return }
+
+        // Find the chat whose effectiveTerminalId matches the notification's conversationId
+        if let chat = chatManager.chats.first(where: { $0.effectiveTerminalId == conversationId }) {
+            print("[ChatTabView] Deep linking to chat: \(conversationId) (topic: \(chat.topic ?? "nil"))")
+            selectedChat = chat
+            pendingConversationId = nil
+        } else {
+            print("[ChatTabView] Chat not found for conversationId: \(conversationId) (have \(chatManager.chats.count) chats)")
+            // Don't clear pendingConversationId yet — chats might still be loading
         }
     }
 }
@@ -72,7 +107,8 @@ struct ChatTabView: View {
                 path: "/test/path",
                 lastOpened: Date()
             ),
-            isChatSessionActive: .constant(false)
+            isChatSessionActive: .constant(false),
+            pendingConversationId: .constant(nil)
         )
         .environmentObject(AuthManager())
         .environmentObject(WebSocketManager())

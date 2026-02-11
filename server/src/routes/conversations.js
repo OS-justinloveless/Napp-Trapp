@@ -108,6 +108,32 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Get and clear pending notifications (session_end events that fired while no client was connected)
+// Used by iOS background fetch to check if any chats completed while the app was suspended/killed
+router.get("/notifications/pending", async (req, res) => {
+  try {
+    const pendingNotifications = chatProcessManager.getPendingNotifications();
+    const result = [];
+    for (const [conversationId, events] of pendingNotifications) {
+      for (const event of events) {
+        result.push({
+          conversationId,
+          type: event.type,
+          topic: event.topic || null,
+          content: event.content || null,
+          timestamp: event.timestamp,
+          isTurnComplete: event.isTurnComplete || false,
+        });
+      }
+    }
+    console.log(`[API] Returning ${result.length} pending notifications`);
+    res.json({ notifications: result });
+  } catch (error) {
+    console.error("Error fetching pending notifications:", error);
+    res.status(500).json({ error: "Failed to fetch pending notifications" });
+  }
+});
+
 // Get tool availability status
 router.get("/tools/availability", async (req, res) => {
   try {

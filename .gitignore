@@ -60,3 +60,6 @@ proguard/
 
 # Android generated files
 android-client/app/src/main/assets/
+
+# nappctl compiled binary
+nappctl/bin/

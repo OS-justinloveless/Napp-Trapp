@@ -98,6 +98,8 @@ class AuthManager: ObservableObject {
         error = nil
         
         UserDefaults.standard.removeObject(forKey: storageKey)
+        UserDefaults.standard.removeObject(forKey: "serverUrl")
+        UserDefaults.standard.removeObject(forKey: "authToken")
         
         // Clear cached data on logout
         CacheManager.shared.clearAll()
@@ -110,6 +112,11 @@ class AuthManager: ObservableObject {
         if let data = try? JSONEncoder().encode(credentials) {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
+
+        // Also store raw values for background task access (BackgroundTaskManager
+        // can't reference AuthManager since it runs when the app is suspended)
+        UserDefaults.standard.set(serverUrl, forKey: "serverUrl")
+        UserDefaults.standard.set(token, forKey: "authToken")
     }
     
     func createAPIService() -> APIService? {

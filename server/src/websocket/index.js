@@ -42,6 +42,26 @@ export function setupWebSocket(wss, authManager) {
               success: true,
               message: 'Authenticated successfully'
             }));
+
+            // Deliver any pending session_end notifications that were stored
+            // while no WebSocket client was connected
+            try {
+              const pendingNotifications = chatProcessManager.getPendingNotifications();
+              if (pendingNotifications.size > 0) {
+                for (const [conversationId, events] of pendingNotifications) {
+                  for (const event of events) {
+                    ws.send(JSON.stringify({
+                      type: 'chatEvent',
+                      conversationId,
+                      event
+                    }));
+                    console.log(`[WS] Delivered pending session_end notification for ${conversationId} to reconnected client ${clientId}`);
+                  }
+                }
+              }
+            } catch (err) {
+              console.error(`[WS] Error delivering pending notifications:`, err);
+            }
           } else {
             ws.send(JSON.stringify({
               type: 'auth',
@@ -210,6 +230,23 @@ export function setupWebSocket(wss, authManager) {
         }
       }
       
+      // Clean up chat notification handlers (lightweight session_end listeners)
+      if (client && client.chatNotificationHandlers) {
+        for (const [convId, handler] of client.chatNotificationHandlers) {
+          chatProcessManager.removeOutputHandler(convId, handler);
+          console.log(`[WS] Cleaned up notification handler for ${convId} (client ${clientId} disconnected)`);
+        }
+        client.chatNotificationHandlers.clear();
+      }
+
+      // Clean up active chat handlers
+      if (client && client.chatHandlers) {
+        for (const [convId, handler] of client.chatHandlers) {
+          chatProcessManager.removeOutputHandler(convId, handler);
+        }
+        client.chatHandlers.clear();
+      }
+
       clients.delete(clientId);
     });
     
@@ -985,6 +1022,15 @@ async function handleChatAttach(clientId, ws, message) {
     client.chatHandlers.delete(conversationId);
   }
 
+  // Remove any existing notification handler for this conversation (client is re-attaching
+  // so the full handler will take over; the notification handler would be a duplicate)
+  if (client.chatNotificationHandlers && client.chatNotificationHandlers.has(conversationId)) {
+    const notifHandler = client.chatNotificationHandlers.get(conversationId);
+    chatProcessManager.removeOutputHandler(conversationId, notifHandler);
+    client.chatNotificationHandlers.delete(conversationId);
+    console.log(`[WS] Removed notification handler for ${conversationId} (client re-attaching)`);
+  }
+
   try {
     // Attach to the chat process
     const attachResult = await chatProcessManager.attachChat(conversationId, clientId);
@@ -1097,7 +1143,7 @@ function handleChatDetach(clientId, message) {
     }
   }
 
-  // Remove output handler
+  // Remove the full output handler (stops streaming all events to this client)
   if (client && client.chatHandlers) {
     const handler = client.chatHandlers.get(conversationId);
     if (handler) {
@@ -1106,7 +1152,35 @@ function handleChatDetach(clientId, message) {
     }
   }
 
+  // Add a lightweight notification handler that only forwards session_end events.
+  // This allows the client to receive turn-completion notifications even after
+  // navigating away from the chat view, as long as their WebSocket is still connected.
   if (client) {
+    // Initialize notification handlers map if needed
+    if (!client.chatNotificationHandlers) {
+      client.chatNotificationHandlers = new Map();
+    }
+
+    // Don't add a duplicate notification handler
+    if (!client.chatNotificationHandlers.has(conversationId)) {
+      const notificationHandler = (event) => {
+        if (event.type === 'session_end') {
+          const c = clients.get(clientId);
+          if (c && c.ws.readyState === 1) {
+            console.log(`[WS] Sending session_end notification to detached client ${clientId} for ${conversationId}`);
+            c.ws.send(JSON.stringify({
+              type: 'chatEvent',
+              conversationId,
+              event
+            }));
+          }
+        }
+      };
+      client.chatNotificationHandlers.set(conversationId, notificationHandler);
+      chatProcessManager.addOutputHandler(conversationId, notificationHandler);
+      console.log(`[WS] Added notification handler for detached client ${clientId} on chat ${conversationId}`);
+    }
+
     client.subscribedTerminals.delete(conversationId);
   }
 
@@ -1146,7 +1220,41 @@ async function handleChatMessage(clientId, ws, message) {
     }
 
     // Send message with optional attachments
-    const result = await chatProcessManager.sendMessage(conversationId, content, attachments);
+    let result;
+    try {
+      result = await chatProcessManager.sendMessage(conversationId, content, attachments);
+    } catch (sendError) {
+      // If the process died/ended, try to respawn it and retry once
+      if (sendError.message.includes('not running')) {
+        console.log(`[WS] Chat process not running for ${conversationId}, attempting to respawn...`);
+        ws.send(JSON.stringify({
+          type: 'chatEvent',
+          conversationId,
+          event: {
+            id: `system-${Date.now()}`,
+            type: 'system',
+            conversationId,
+            content: 'Chat process ended. Resuming session...',
+            timestamp: Date.now(),
+          }
+        }));
+
+        try {
+          await chatProcessManager.attachChat(conversationId, clientId);
+          console.log(`[WS] Successfully respawned chat process for ${conversationId}`);
+
+          // Small delay to let the CLI process initialize before sending input
+          await new Promise(resolve => setTimeout(resolve, 1500));
+
+          result = await chatProcessManager.sendMessage(conversationId, content, attachments);
+        } catch (respawnError) {
+          console.error(`[WS] Failed to respawn chat process for ${conversationId}:`, respawnError);
+          throw respawnError;
+        }
+      } else {
+        throw sendError;
+      }
+    }
 
     // Confirm message was sent
     ws.send(JSON.stringify({

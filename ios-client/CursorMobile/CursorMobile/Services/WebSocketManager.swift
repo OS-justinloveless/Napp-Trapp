@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 struct FileChangeEvent: Identifiable {
     let id = UUID()
@@ -14,15 +15,21 @@ class WebSocketManager: ObservableObject {
     @Published var isConnected = false
     @Published var fileChanges: [FileChangeEvent] = []
     @Published var lastMessage: [String: Any]?
-    
+
     private var webSocketTask: URLSessionWebSocketTask?
     private var session: URLSession?
     private var serverUrl: String?
     private var token: String?
     private var reconnectTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
-    
+
     private let maxFileChanges = 50
+
+    // Notification support
+    private var isAppInForeground = true
+    private var currentVisibleConversationId: String?
+    private var chatTopics: [String: String] = [:]  // conversationId -> topic
+    private weak var notificationManager: NotificationManager?
     
     // Terminal support
     private var terminalOutputHandlers: [String: (String) -> Void] = [:]
@@ -35,7 +42,38 @@ class WebSocketManager: ObservableObject {
     private var chatRawDataHandlers: [String: (String) -> Void] = [:]
     private var chatSessionEventHandlers: [String: (ChatSessionEvent) -> Void] = [:]
     private var chatErrorHandlers: [String: (String) -> Void] = [:]
-    
+
+    init() {
+        notificationManager = NotificationManager.shared
+        setupAppLifecycleTracking()
+    }
+
+    private func setupAppLifecycleTracking() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func appDidBecomeActive() {
+        isAppInForeground = true
+        notificationManager?.clearAllNotifications()
+        print("[WebSocketManager] App became active - cleared notifications")
+    }
+
+    @objc private func appWillResignActive() {
+        isAppInForeground = false
+        print("[WebSocketManager] App will resign active")
+    }
+
     func connect(serverUrl: String, token: String) {
         self.serverUrl = serverUrl
         self.token = token
@@ -71,6 +109,7 @@ class WebSocketManager: ObservableObject {
     
     deinit {
         // Note: This is a @MainActor class, so deinit runs on main actor
+        NotificationCenter.default.removeObserver(self)
         // Cancel any pending tasks
         reconnectTask?.cancel()
         receiveTask?.cancel()
@@ -289,7 +328,27 @@ class WebSocketManager: ObservableObject {
                 // New structured event from ChatProcessManager
                 if let conversationId = json["conversationId"] as? String,
                    let eventData = json["event"] as? [String: Any] {
-                    print("WebSocket: Received chatEvent for \(conversationId): \(eventData["type"] ?? "unknown")")
+                    let eventType = eventData["type"] as? String
+                    print("[WebSocketManager] Received chatEvent for \(conversationId): type=\(eventType ?? "unknown")")
+
+                    // Check if this is a session_end event and send notification if needed
+                    if eventType == "session_end" {
+                        let isTurnComplete = eventData["isTurnComplete"] as? Bool ?? false
+                        print("[WebSocketManager] session_end detected for \(conversationId), isTurnComplete=\(isTurnComplete)")
+                        // Extract topic from the event if available (server enriches pending notifications with topic)
+                        if let topic = eventData["topic"] as? String, !topic.isEmpty {
+                            if chatTopics[conversationId] == nil {
+                                chatTopics[conversationId] = topic
+                                print("[WebSocketManager] Populated topic from session_end event: \(topic)")
+                            }
+                        }
+                        // Only notify when the full turn is complete, not for intermediate message_stop events
+                        if isTurnComplete {
+                            print("[WebSocketManager] Turn is complete! Triggering handleChatTurnComplete for \(conversationId)")
+                            self.handleChatTurnComplete(conversationId)
+                        }
+                    }
+
                     // Parse the event into a ChatContentBlock
                     do {
                         let jsonData = try JSONSerialization.data(withJSONObject: eventData)
@@ -417,22 +476,68 @@ class WebSocketManager: ObservableObject {
               let jsonString = String(data: data, encoding: .utf8) else {
             return
         }
-        
+
         task.send(.string(jsonString)) { error in
             if let error = error {
                 print("WebSocket send error: \(error)")
             }
         }
     }
-    
+
     func watchPath(_ path: String) {
         send(["type": "watch", "path": path])
     }
-    
+
     func unwatchPath(_ path: String) {
         send(["type": "unwatch", "path": path])
     }
-    
+
+    // MARK: - Notification Support Methods
+
+    /// Set which conversation is currently visible on screen
+    func setVisibleConversation(_ conversationId: String?) {
+        currentVisibleConversationId = conversationId
+        print("[WebSocketManager] Visible conversation set to: \(conversationId ?? "none")")
+    }
+
+    /// Store chat topic for use in notifications
+    func setChatTopic(_ conversationId: String, topic: String) {
+        chatTopics[conversationId] = topic
+        print("[WebSocketManager] Chat topic set for \(conversationId): \(topic)")
+    }
+
+    /// Handle chat turn completion - send notification if appropriate
+    private func handleChatTurnComplete(_ conversationId: String) {
+        // Determine if we should send a notification.
+        // Only suppress if the user is ACTIVELY looking at this exact chat,
+        // meaning both: the chat view is on screen AND the app is in the foreground.
+        // If the app is backgrounded (user switched to another app), always notify.
+        let isViewingThisChat = (currentVisibleConversationId == conversationId)
+        let isActivelyViewingChat = isViewingThisChat && isAppInForeground
+        let shouldNotify = !isActivelyViewingChat
+
+        print("[WebSocketManager] ──────────────────────────────────────")
+        print("[WebSocketManager] handleChatTurnComplete called")
+        print("[WebSocketManager]   conversationId: \(conversationId)")
+        print("[WebSocketManager]   currentVisibleConversationId: \(currentVisibleConversationId ?? "nil")")
+        print("[WebSocketManager]   isViewingThisChat: \(isViewingThisChat)")
+        print("[WebSocketManager]   isAppInForeground: \(isAppInForeground)")
+        print("[WebSocketManager]   isActivelyViewingChat: \(isActivelyViewingChat)")
+        print("[WebSocketManager]   shouldNotify: \(shouldNotify)")
+        print("[WebSocketManager]   chatTopics keys: \(Array(chatTopics.keys))")
+        print("[WebSocketManager]   notificationManager is nil: \(notificationManager == nil)")
+
+        if shouldNotify {
+            let topic = chatTopics[conversationId]
+            print("[WebSocketManager]   topic for notification: \(topic ?? "nil")")
+            notificationManager?.scheduleNotification(conversationId: conversationId, topic: topic)
+            print("[WebSocketManager]   Notification scheduled for \(conversationId)")
+        } else {
+            print("[WebSocketManager]   Notification suppressed (user is actively viewing this chat)")
+        }
+        print("[WebSocketManager] ──────────────────────────────────────")
+    }
+
     // MARK: - Terminal Methods
     
     /// Create a new PTY terminal

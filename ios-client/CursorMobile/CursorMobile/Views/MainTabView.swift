@@ -23,6 +23,9 @@ struct MainTabView: View {
     // Settings sheet
     @State private var showSettings = false
     
+    // Pending deep link navigation to a specific chat conversation
+    @State private var pendingChatConversationId: String?
+    
     // Drawer width
     private let drawerWidth: CGFloat = 280
     
@@ -129,6 +132,13 @@ struct MainTabView: View {
                 isChatSessionActive = false
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenChatConversation"))) { notification in
+            guard let conversationId = notification.userInfo?["conversationId"] as? String else { return }
+            print("[MainTabView] Received OpenChatConversation notification for: \(conversationId)")
+            // Store the pending conversation and switch to chat tab
+            pendingChatConversationId = conversationId
+            selectedTab = 3
+        }
     }
     
     @ViewBuilder
@@ -232,7 +242,7 @@ struct MainTabView: View {
 
     private func chatTab(project: Project) -> some View {
         NavigationStack {
-            ChatTabView(project: project, isChatSessionActive: $isChatSessionActive)
+            ChatTabView(project: project, isChatSessionActive: $isChatSessionActive, pendingConversationId: $pendingChatConversationId)
                 .environmentObject(chatManager)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
