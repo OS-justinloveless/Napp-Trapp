@@ -17,7 +17,6 @@ struct ChatMarkdownView: View {
     private enum MarkdownBlock {
         case text(String)
         case code(language: String?, code: String)
-        case inlineCode(String)
     }
 
     // MARK: - Parsing
@@ -28,7 +27,7 @@ struct ChatMarkdownView: View {
         var currentText = ""
 
         while !remaining.isEmpty {
-            // Check for code block
+            // Check for code block (```)
             if remaining.hasPrefix("```") {
                 // Flush current text
                 if !currentText.isEmpty {
@@ -56,25 +55,8 @@ struct ChatMarkdownView: View {
                     remaining = String(remaining.dropFirst(3))
                 }
             }
-            // Check for inline code
-            else if remaining.hasPrefix("`") {
-                let afterBacktick = remaining.dropFirst()
-                if let endIndex = afterBacktick.firstIndex(of: "`") {
-                    // Flush current text
-                    if !currentText.isEmpty {
-                        blocks.append(.text(currentText))
-                        currentText = ""
-                    }
-
-                    let code = String(afterBacktick[..<endIndex])
-                    blocks.append(.inlineCode(code))
-                    remaining = String(afterBacktick[afterBacktick.index(after: endIndex)...])
-                } else {
-                    currentText += "`"
-                    remaining = String(afterBacktick)
-                }
-            }
             else {
+                // Add character to current text (including inline code backticks)
                 currentText += String(remaining.prefix(1))
                 remaining = String(remaining.dropFirst())
             }
@@ -94,42 +76,34 @@ struct ChatMarkdownView: View {
     private func renderBlock(_ block: MarkdownBlock) -> some View {
         switch block {
         case .text(let text):
-            // Preserve newlines by converting single \n to markdown hard breaks
-            // CommonMark spec: single newlines are treated as spaces unless you use two spaces + newline
-            // We want to preserve all newlines, so we convert them to hard breaks (two spaces + newline)
-            let preservedText = text.replacingOccurrences(of: "\n", with: "  \n")
+            // Split text by newlines and render each line separately with markdown
+            // This ensures newlines are properly respected while still supporting inline markdown
+            let lines = text.components(separatedBy: "\n")
 
-            // Use full markdown parsing
-            if let attributed = try? AttributedString(
-                markdown: preservedText,
-                options: .init(
-                    allowsExtendedAttributes: true,
-                    interpretedSyntax: .full,
-                    failurePolicy: .returnPartiallyParsedIfPossible
-                )
-            ) {
-                Text(attributed)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text(text)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    // Use full markdown parsing (handles inline code, bold, italic, etc.)
+                    if let attributed = try? AttributedString(
+                        markdown: line,
+                        options: .init(
+                            allowsExtendedAttributes: true,
+                            interpretedSyntax: .full,
+                            failurePolicy: .returnPartiallyParsedIfPossible
+                        )
+                    ) {
+                        Text(attributed)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(line)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
         case .code(let language, let code):
             codeBlockView(language: language, code: code)
-
-        case .inlineCode(let code):
-            Text(code)
-                .font(.system(.body, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(4)
-                .textSelection(.enabled)
         }
     }
 
